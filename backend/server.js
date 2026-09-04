@@ -3,8 +3,11 @@ const express = require('express');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
 
+// Import
 const { sequelize } = require('./models');
 const authRoutes = require('./routes/authRoutes');
+const importRoutes = require('./routes/importRoutes');
+const plantRoutes = require('./routes/plantRoutes');
 
 const app = express();
 
@@ -15,7 +18,10 @@ app.use(cors({
 app.use(express.json());
 app.use(cookieParser());
 
+// Route
 app.use('/api/auth', authRoutes);
+app.use('/api/import', importRoutes);
+app.use('/api/plants', plantRoutes);
 
 const PORT = process.env.PORT || 5000;
 
