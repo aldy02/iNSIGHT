@@ -26,7 +26,7 @@ export default function Login() {
     try {
       setLoading(true);
       await login(form.email, form.password);
-      navigate('/');
+      navigate('/pabrik/P1A');
     } catch (err) {
       setError(err.response?.data?.message || 'Terjadi kesalahan, coba lagi');
     } finally {
