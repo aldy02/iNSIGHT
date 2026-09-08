@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import { CalendarRange } from 'lucide-react';
+import { CalendarRange, Loader2 } from 'lucide-react';
 import ParameterCard from '../components/ParameterCard';
 import DataTable from '../components/DataTable';
 import DateRangePicker from '../components/DateRangePicker';
-import { kategoriData, getReadingsInRange, getReadingsInDateRange, computeStatus } from '../tests/data';
+import { getStructure, getReadings } from '../api/master';
+import api from '../api/axios';
 
 const RANGE_OPTIONS = [
   { label: '1 Minggu', days: 7 },
@@ -12,6 +13,32 @@ const RANGE_OPTIONS = [
   { label: '1 Bulan', days: 30 },
   { label: '3 Bulan', days: 90 },
 ];
+
+// Hitung status
+function computeStatus(nilai, kop) {
+  if (!kop || nilai == null) return 'no_kop';
+  const { min, max, minInclusive = true, maxInclusive = true } = kop;
+  if (min != null) {
+    const belowMin = minInclusive ? nilai < min : nilai <= min;
+    if (belowMin) return 'out_of_range';
+  }
+  if (max != null) {
+    const aboveMax = maxInclusive ? nilai > max : nilai >= max;
+    if (aboveMax) return 'out_of_range';
+  }
+  return 'normal';
+}
+
+function rangeToDates(activeRange) {
+  if (activeRange.type === 'custom') {
+    return { startDate: activeRange.start, endDate: activeRange.end };
+  }
+  const end = new Date();
+  const start = new Date();
+  start.setDate(start.getDate() - (activeRange.days - 1));
+  const fmt = (d) => d.toISOString().slice(0, 10);
+  return { startDate: fmt(start), endDate: fmt(end) };
+}
 
 function GroupSection({ kategoriSlug, group, activeRange }) {
   const subCategories = group.subCategories;
@@ -36,6 +63,9 @@ function GroupSection({ kategoriSlug, group, activeRange }) {
 
   const showSubTabs = subCategories.length > 1;
   const showUnitTabs = activeSub.units.length > 1;
+
+  const [readingsByParam, setReadingsByParam] = useState({});
+  const [loadingReadings, setLoadingReadings] = useState(true);
 
   const handleSelectSub = (slug) => {
     const sub = subCategories.find((s) => s.slug === slug);
@@ -63,17 +93,27 @@ function GroupSection({ kategoriSlug, group, activeRange }) {
     });
   };
 
-  // Filter hari
-  const getFilteredReadings = (subSlug, unitId, paramId) => {
-    if (activeRange.type === 'custom') {
-      return getReadingsInDateRange(kategoriSlug, subSlug, unitId, paramId, activeRange.start, activeRange.end);
-    }
-    return getReadingsInRange(kategoriSlug, subSlug, unitId, paramId, activeRange.days);
-  };
+  useEffect(() => {
+    if (!activeUnit) return;
+    const { startDate, endDate } = rangeToDates(activeRange);
+
+    setLoadingReadings(true);
+    Promise.all(
+      activeSub.parameters.map((param) =>
+        getReadings(activeUnit.id, param.id, startDate, endDate).then((data) => ({ paramId: param.id, data }))
+      )
+    )
+      .then((results) => {
+        const map = {};
+        results.forEach((r) => { map[r.paramId] = r.data; });
+        setReadingsByParam(map);
+      })
+      .finally(() => setLoadingReadings(false));
+  }, [activeUnit?.id, activeSub.slug, activeRange.type, activeRange.days, activeRange.start, activeRange.end]);
 
   const tableRows = activeSub.parameters
     .flatMap((param) => {
-      const readings = getFilteredReadings(activeSub.slug, activeUnit.id, param.id);
+      const readings = readingsByParam[param.id] || [];
       const kop = activeSub.kop[param.id];
       return readings.map((r) => ({
         tanggal: r.tanggal,
@@ -83,7 +123,7 @@ function GroupSection({ kategoriSlug, group, activeRange }) {
         nilai: r.nilai,
         satuan: param.satuan,
         kop,
-        status: computeStatus(r.nilai, kop),
+        status: r.status && r.status !== 'no_kop' ? r.status : computeStatus(r.nilai, kop),
       }));
     })
     .sort((a, b) => (a.tanggal < b.tanggal ? 1 : -1));
@@ -137,46 +177,77 @@ function GroupSection({ kategoriSlug, group, activeRange }) {
         )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {activeSub.parameters.map((param) => {
-          const readings = getFilteredReadings(activeSub.slug, activeUnit.id, param.id);
-          const kop = activeSub.kop[param.id];
-          return (
-            <ParameterCard
-              key={param.id}
-              parameter={param}
-              unit={activeUnit}
-              readings={readings}
-              kop={kop}
-              satuan={param.satuan}
-            />
-          );
-        })}
-      </div>
+      {loadingReadings ? (
+        <div className="flex items-center justify-center py-16 text-[#8292AA]">
+          <Loader2 size={20} className="animate-spin mr-2" /> Memuat data...
+        </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {activeSub.parameters.map((param) => (
+              <ParameterCard
+                key={param.id}
+                parameter={param}
+                unit={activeUnit}
+                readings={readingsByParam[param.id] || []}
+                kop={activeSub.kop[param.id]}
+                satuan={param.satuan}
+              />
+            ))}
+          </div>
 
-      <div className="mt-6">
-        <DataTable
-          rows={tableRows}
-          resetKey={`${kategoriSlug}-${activeSub.slug}-${activeUnit.id}-${activeRange.type}-${activeRange.days || ''}-${activeRange.start || ''}-${activeRange.end || ''}`}
-          unitColumnLabel={unitColumnLabel}
-        />
-      </div>
+          <div className="mt-6">
+            <DataTable
+              rows={tableRows}
+              resetKey={`${kategoriSlug}-${activeSub.slug}-${activeUnit.id}-${activeRange.type}-${activeRange.days || ''}-${activeRange.start || ''}-${activeRange.end || ''}`}
+              unitColumnLabel={unitColumnLabel}
+            />
+          </div>
+        </>
+      )}
     </div>
   );
 }
 
 // Kategori Content
-function KategoriContent({ kategoriSlug }) {
+function KategoriContent({ plantId, kategoriSlug }) {
   const [activeRange, setActiveRange] = useState({ type: 'preset', days: 30 });
   const [customValue, setCustomValue] = useState(null);
   const [searchParams] = useSearchParams();
-  const data = kategoriData[kategoriSlug];
+
+  // Struktur (Sub Kategori/Unit/Parameter/KOP)
+  const [structure, setStructure] = useState(null);
+  const [loadingStructure, setLoadingStructure] = useState(true);
+
+  useEffect(() => {
+    setLoadingStructure(true);
+    getStructure(plantId, kategoriSlug)
+      .then(setStructure)
+      .catch(() => setStructure(null))
+      .finally(() => setLoadingStructure(false));
+  }, [plantId, kategoriSlug]);
+
+  if (loadingStructure) {
+    return (
+      <div className="flex items-center justify-center py-24 text-[#8292AA]">
+        <Loader2 size={20} className="animate-spin mr-2" /> Memuat kategori...
+      </div>
+    );
+  }
+
+  if (!structure) {
+    return (
+      <div className="bg-white rounded-2xl p-8 shadow-sm">
+        <p className="text-sm text-[#8292AA]">Data master untuk kategori ini belum tersedia.</p>
+      </div>
+    );
+  }
 
   const groupParam = searchParams.get('group');
   const visibleGroups =
-    data.groups.length > 1
-      ? [data.groups.find((g) => g.subCategories[0].slug === groupParam) || data.groups[0]]
-      : data.groups;
+    structure.groups.length > 1
+      ? [structure.groups.find((g) => g.subCategories[0].slug === groupParam) || structure.groups[0]]
+      : structure.groups;
 
   const handleSelectPreset = (days) => {
     setActiveRange({ type: 'preset', days });
@@ -191,7 +262,7 @@ function KategoriContent({ kategoriSlug }) {
     <div>
       <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-[#1B2559]">{data.label}</h1>
+          <h1 className="text-2xl font-bold text-[#1B2559]">{structure.label}</h1>
           <p className="text-sm text-[#505F76] mt-1">Data Aktual VS KOP Per Parameter</p>
         </div>
 
@@ -248,11 +319,25 @@ function PlaceholderContent({ kode, kategori }) {
 export default function PabrikKategoriPage() {
   const { kode, kategori } = useParams();
 
-  const isP6 = kode?.toUpperCase() === 'P6';
-  const hasData = isP6 && kategoriData[kategori];
+  const [plantId, setPlantId] = useState(undefined);
 
-  return hasData ? (
-    <KategoriContent kategoriSlug={kategori} />
+  useEffect(() => {
+    api.get('/plants').then((res) => {
+      const plant = res.data.data.find((p) => p.kode?.toUpperCase() === kode?.toUpperCase());
+      setPlantId(plant?.id ?? null);
+    });
+  }, [kode]);
+
+  if (plantId === undefined) {
+    return (
+      <div className="flex items-center justify-center py-24 text-[#8292AA]">
+        <Loader2 size={20} className="animate-spin mr-2" /> Memuat...
+      </div>
+    );
+  }
+
+  return plantId ? (
+    <KategoriContent plantId={plantId} kategoriSlug={kategori} />
   ) : (
     <PlaceholderContent kode={kode} kategori={kategori} />
   );
