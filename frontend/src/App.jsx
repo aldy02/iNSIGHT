@@ -4,7 +4,7 @@ import Login from './pages/Login';
 import Signup from './pages/Signup';
 import PabrikPage from './pages/PabrikPage';
 import PabrikKategoriPage from './pages/PabrikKategoriPage';
-import FormUploadPage from './pages/FormUploadPage';
+import FormUpload from './pages/FormUpload';
 import LayoutWrapper from './components/LayoutWrapper';
 import ProtectedRoute from './components/ProtectedRoute';
 
@@ -23,7 +23,7 @@ function App() {
 
             {/* Admin Only */}
             <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
-              <Route path="/upload" element={<FormUploadPage />} />
+              <Route path="/upload" element={<FormUpload />} />
             </Route>
           </Route>
         </Route>

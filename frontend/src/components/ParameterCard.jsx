@@ -1,4 +1,4 @@
-import { CircleCheck, TrendingUp, TrendingDown, KeySquare } from 'lucide-react';
+import { CircleCheck, TrendingUp, TrendingDown, KeySquare, Inbox } from 'lucide-react';
 import {
     ResponsiveContainer,
     AreaChart,
@@ -29,6 +29,19 @@ function StatBox({ icon, iconBg, iconColor, label, value, sub }) {
 
 export default function ParameterCard({ parameter, unit, readings, kop }) {
     const satuan = parameter.satuan ?? '';
+
+    // Jika user pilih rentang waktu dan datanya kosong
+    if (!readings || readings.length === 0) {
+        return (
+            <div className="bg-white rounded-2xl p-6 shadow-sm">
+                <h3 className="text-base font-semibold text-[#1B2559] mb-4">{parameter.nama}</h3>
+                <div className="h-64 flex flex-col items-center justify-center text-[#8292AA]">
+                    <Inbox size={28} className="mb-2" />
+                    <p className="text-sm">Tidak ada data pada rentang ini</p>
+                </div>
+            </div>
+        );
+    }
 
     const current = readings[readings.length - 1];
     const highest = readings.reduce((a, b) => (b.nilai > a.nilai ? b : a), readings[0]);
@@ -85,23 +98,28 @@ export default function ParameterCard({ parameter, unit, readings, kop }) {
             </div>
 
             {/* Legenda */}
-            <div className="flex items-center gap-5 text-xs text-[#8292AA] mb-2 flex-wrap">
-                <span className="flex items-center gap-1.5">
-                    <span className="w-4 h-0.5 bg-[#003399] inline-block rounded" /> Aktual
-                </span>
-                {kop?.max != null && (
+            <div className="flex items-center justify-between text-xs text-[#8292AA] mb-4 mt-6 flex-wrap gap-y-2">
+                {/* Kontainer Aktual, Batas Atas, Batas Bawah */}
+                <div className="flex items-center gap-5 flex-wrap">
                     <span className="flex items-center gap-1.5">
-                        <span className="w-4 border-t-2 border-dotted border-orange-400 inline-block" /> Batas Atas
+                        <span className="w-4 h-0.5 bg-[#003399] inline-block rounded" /> Aktual
                     </span>
-                )}
-                {kop?.min != null && (
-                    <span className="flex items-center gap-1.5">
-                        <span className="w-4 border-t-2 border-dotted border-[#377CEF] inline-block" /> Batas Bawah
-                    </span>
-                )}
-                <span className="flex items-center gap-1.5">
+                    {kop?.max != null && (
+                        <span className="flex items-center gap-1.5">
+                            <span className="w-4 border-t-2 border-dotted border-orange-400 inline-block" /> Batas Atas
+                        </span>
+                    )}
+                    {kop?.min != null && (
+                        <span className="flex items-center gap-1.5">
+                            <span className="w-4 border-t-2 border-dotted border-[#377CEF] inline-block" /> Batas Bawah
+                        </span>
+                    )}
+                </div>
+
+                {/* Kontainer Titik Tertinggi */}
+                <div className="flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-red-500 inline-block" /> Titik Tertinggi &bull; {highest.label}
-                </span>
+                </div>
             </div>
 
             {/* Chart */}

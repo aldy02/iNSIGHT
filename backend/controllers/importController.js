@@ -1,6 +1,14 @@
 const { sequelize, Plant, Area, MainCategory, SubCategory, Unit, Parameter, DailyReading } = require('../models');
 const { readWorkbook, parseSheet, normalize } = require('../utils/excelParser');
 
+function parseNilaiNumeric(nilaiText) {
+  const str = String(nilaiText).trim();
+  if (str === '' || str === '-') return null;
+  const cleaned = str.replace(/^[<>]=?/, ''); // Hapus tanda "<" / ">"
+  const num = parseFloat(cleaned);
+  return Number.isNaN(num) ? null : num;
+}
+
 async function buildUnitMap(plantId) {
     const units = await Unit.findAll({
         include: [{
@@ -38,6 +46,8 @@ async function buildParameterMap() {
 }
 
 async function saveReading({ tanggal, unitId, parameterId, nilaiText, userId }, transaction) {
+    const nilaiNumeric = parseNilaiNumeric(nilaiText);
+
     const existing = await DailyReading.findOne({
         where: { tanggal, unit_id: unitId, parameter_id: parameterId },
         transaction,
@@ -45,6 +55,7 @@ async function saveReading({ tanggal, unitId, parameterId, nilaiText, userId }, 
 
     if (existing) {
         existing.nilai_text = nilaiText;
+        existing.nilai_numeric = nilaiNumeric;
         existing.source = 'import';
         existing.input_by = userId;
         await existing.save({ transaction });
@@ -52,7 +63,15 @@ async function saveReading({ tanggal, unitId, parameterId, nilaiText, userId }, 
     }
 
     await DailyReading.create(
-        { tanggal, unit_id: unitId, parameter_id: parameterId, nilai_text: nilaiText, source: 'import', input_by: userId },
+        {
+          tanggal,
+          unit_id: unitId,
+          parameter_id: parameterId,
+          nilai_text: nilaiText,
+          nilai_numeric: nilaiNumeric,
+          source: 'import',
+          input_by: userId,
+        },
         { transaction }
     );
     return 'created';

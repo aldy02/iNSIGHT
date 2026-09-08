@@ -2,7 +2,9 @@ import { useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { CalendarRange } from 'lucide-react';
 import ParameterCard from '../components/ParameterCard';
-import { kategoriData, getReadingsInRange } from '../tests/data';
+import DataTable from '../components/DataTable';
+import DateRangePicker from '../components/DateRangePicker';
+import { kategoriData, getReadingsInRange, getReadingsInDateRange, computeStatus } from '../tests/data';
 
 const RANGE_OPTIONS = [
   { label: '1 Minggu', days: 7 },
@@ -11,7 +13,7 @@ const RANGE_OPTIONS = [
   { label: '3 Bulan', days: 90 },
 ];
 
-function GroupSection({ kategoriSlug, group, rangeDays }) {
+function GroupSection({ kategoriSlug, group, activeRange }) {
   const subCategories = group.subCategories;
 
   const groupKey = subCategories[0].slug;
@@ -61,6 +63,33 @@ function GroupSection({ kategoriSlug, group, rangeDays }) {
     });
   };
 
+  // Filter hari
+  const getFilteredReadings = (subSlug, unitId, paramId) => {
+    if (activeRange.type === 'custom') {
+      return getReadingsInDateRange(kategoriSlug, subSlug, unitId, paramId, activeRange.start, activeRange.end);
+    }
+    return getReadingsInRange(kategoriSlug, subSlug, unitId, paramId, activeRange.days);
+  };
+
+  const tableRows = activeSub.parameters
+    .flatMap((param) => {
+      const readings = getFilteredReadings(activeSub.slug, activeUnit.id, param.id);
+      const kop = activeSub.kop[param.id];
+      return readings.map((r) => ({
+        tanggal: r.tanggal,
+        label: r.label,
+        unitNama: activeUnit.nama === '-' ? activeSub.nama : activeUnit.nama,
+        parameterNama: param.nama,
+        nilai: r.nilai,
+        satuan: param.satuan,
+        kop,
+        status: computeStatus(r.nilai, kop),
+      }));
+    })
+    .sort((a, b) => (a.tanggal < b.tanggal ? 1 : -1));
+
+  const unitColumnLabel = activeUnit.nama === '-' ? 'Sub Kategori' : 'Unit';
+
   return (
     <div className="mb-10">
       <div className="mb-4 flex items-center justify-between flex-wrap gap-3">
@@ -72,7 +101,7 @@ function GroupSection({ kategoriSlug, group, rangeDays }) {
         </div>
 
         {showSubTabs && (
-          <div className="flex flex-wrap bg-slate-100 rounded-lg p-1">
+          <div className="flex flex-wrap bg-[#E7EBF2] rounded-lg p-1">
             {subCategories.map((sub) => (
               <button
                 key={sub.slug}
@@ -80,7 +109,7 @@ function GroupSection({ kategoriSlug, group, rangeDays }) {
                 className={`px-3.5 py-1.5 rounded-md text-sm font-medium transition-colors ${
                   activeSubSlug === sub.slug
                     ? 'bg-white text-[#1B2559] shadow-sm'
-                    : 'text-[#8292AA] hover:text-[#1B2559]'
+                    : 'text-[#38485D] hover:text-[#1B2559]'
                 }`}
               >
                 {sub.nama}
@@ -90,7 +119,7 @@ function GroupSection({ kategoriSlug, group, rangeDays }) {
         )}
 
         {!showSubTabs && showUnitTabs && (
-          <div className="flex bg-slate-100 rounded-lg p-1">
+          <div className="flex bg-[#E7EBF2] rounded-lg p-1">
             {activeSub.units.map((unit) => (
               <button
                 key={unit.id}
@@ -98,7 +127,7 @@ function GroupSection({ kategoriSlug, group, rangeDays }) {
                 className={`px-3.5 py-1.5 rounded-md text-sm font-medium transition-colors ${
                   activeUnitId === unit.id
                     ? 'bg-white text-[#1B2559] shadow-sm'
-                    : 'text-[#8292AA] hover:text-[#1B2559]'
+                    : 'text-[#38485D] hover:text-[#1B2559]'
                 }`}
               >
                 {unit.nama}
@@ -110,7 +139,7 @@ function GroupSection({ kategoriSlug, group, rangeDays }) {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {activeSub.parameters.map((param) => {
-          const readings = getReadingsInRange(kategoriSlug, activeSub.slug, activeUnit.id, param.id, rangeDays);
+          const readings = getFilteredReadings(activeSub.slug, activeUnit.id, param.id);
           const kop = activeSub.kop[param.id];
           return (
             <ParameterCard
@@ -124,12 +153,22 @@ function GroupSection({ kategoriSlug, group, rangeDays }) {
           );
         })}
       </div>
+
+      <div className="mt-6">
+        <DataTable
+          rows={tableRows}
+          resetKey={`${kategoriSlug}-${activeSub.slug}-${activeUnit.id}-${activeRange.type}-${activeRange.days || ''}-${activeRange.start || ''}-${activeRange.end || ''}`}
+          unitColumnLabel={unitColumnLabel}
+        />
+      </div>
     </div>
   );
 }
 
+// Kategori Content
 function KategoriContent({ kategoriSlug }) {
-  const [rangeDays, setRangeDays] = useState(30);
+  const [activeRange, setActiveRange] = useState({ type: 'preset', days: 30 });
+  const [customValue, setCustomValue] = useState(null);
   const [searchParams] = useSearchParams();
   const data = kategoriData[kategoriSlug];
 
@@ -139,21 +178,30 @@ function KategoriContent({ kategoriSlug }) {
       ? [data.groups.find((g) => g.subCategories[0].slug === groupParam) || data.groups[0]]
       : data.groups;
 
+  const handleSelectPreset = (days) => {
+    setActiveRange({ type: 'preset', days });
+  };
+
+  const handleApplyCustom = ({ start, end }) => {
+    setCustomValue({ start, end });
+    setActiveRange({ type: 'custom', start, end });
+  };
+
   return (
     <div>
       <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-[#1B2559]">{data.label}</h1>
-          <p className="text-sm text-[#8292AA] mt-1">Data Aktual VS KOP Per Parameter</p>
+          <p className="text-sm text-[#505F76] mt-1">Data Aktual VS KOP Per Parameter</p>
         </div>
 
         <div className="flex flex-wrap gap-2">
           {RANGE_OPTIONS.map((opt) => (
             <button
               key={opt.days}
-              onClick={() => setRangeDays(opt.days)}
+              onClick={() => handleSelectPreset(opt.days)}
               className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
-                rangeDays === opt.days
+                activeRange.type === 'preset' && activeRange.days === opt.days
                   ? 'bg-[#003399] text-white border-[#003399]'
                   : 'bg-white text-[#1B2559] border-slate-200 hover:border-[#003399]'
               }`}
@@ -161,10 +209,12 @@ function KategoriContent({ kategoriSlug }) {
               {opt.label}
             </button>
           ))}
-          <button className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-white text-[#1B2559] border border-slate-200 hover:border-[#003399] transition-colors">
-            <CalendarRange size={16} />
-            Custom Range
-          </button>
+
+          <DateRangePicker
+            isActive={activeRange.type === 'custom'}
+            value={customValue}
+            onApply={handleApplyCustom}
+          />
         </div>
       </div>
 
@@ -175,7 +225,7 @@ function KategoriContent({ kategoriSlug }) {
           key={`${group.subCategories[0].slug}-${idx}`}
           kategoriSlug={kategoriSlug}
           group={group}
-          rangeDays={rangeDays}
+          activeRange={activeRange}
         />
       ))}
     </div>

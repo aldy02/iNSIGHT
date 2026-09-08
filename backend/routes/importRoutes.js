@@ -9,7 +9,7 @@ const importController = require('../controllers/importController');
 router.post(
   '/master',
   authMiddleware,
-  roleMiddleware(['admin', 'operator']),
+  roleMiddleware('admin'),
   upload.single('file'),
   importController.uploadMasterExcel
 );

@@ -295,3 +295,27 @@ export function formatKop(kop, satuan) {
   if (kop.min != null) return `${minSign} ${kop.min}${unitStr}`;
   return '-';
 }
+
+// Status
+export function computeStatus(nilai, kop) {
+  if (!kop) return 'no_kop';
+  if (nilai == null) return 'no_kop';
+
+  const { min, max, minInclusive = true, maxInclusive = true } = kop;
+
+  if (min != null) {
+    const belowMin = minInclusive ? nilai < min : nilai <= min;
+    if (belowMin) return 'out_of_range';
+  }
+  if (max != null) {
+    const aboveMax = maxInclusive ? nilai > max : nilai >= max;
+    if (aboveMax) return 'out_of_range';
+  }
+  return 'normal';
+}
+
+// Get Data By Range Period
+export function getReadingsInDateRange(kategoriSlug, subSlug, unitId, parameterId, startDate, endDate) {
+  const all = getAllReadings(kategoriSlug, subSlug, unitId, parameterId);
+  return all.filter((r) => r.tanggal >= startDate && r.tanggal <= endDate);
+}

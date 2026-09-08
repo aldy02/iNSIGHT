@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  Building2,
+  Factory,
   UploadCloud,
   LogOut,
   ChevronUp,
@@ -128,7 +128,7 @@ const isChildActive = (catPath, childSlug, siblings) => {
                           ${plantActive ? activeStyle : `${baseText} ${hoverStyle}`}
                         `}
                       >
-                        <span className="shrink-0"><Building2 size={20} /></span>
+                        <span className="shrink-0"><Factory size={20} /></span>
                         <span className="flex-1 leading-tight text-left">{plant.label}</span>
                         <span className="shrink-0">
                           {plantExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
@@ -145,7 +145,7 @@ const isChildActive = (catPath, childSlug, siblings) => {
                           ${plantActive ? activeStyle : `${baseText} ${hoverStyle}`}
                         `}
                       >
-                        <span className="shrink-0"><Building2 size={20} /></span>
+                        <span className="shrink-0"><Factory size={20} /></span>
                         <span className="flex-1 leading-tight">{plant.label}</span>
                       </Link>
                     )}
