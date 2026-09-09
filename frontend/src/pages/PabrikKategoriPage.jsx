@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import { CalendarRange, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import ParameterCard from '../components/ParameterCard';
 import DataTable from '../components/DataTable';
 import DateRangePicker from '../components/DateRangePicker';

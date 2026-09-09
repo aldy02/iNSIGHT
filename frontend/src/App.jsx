@@ -7,6 +7,7 @@ import PabrikKategoriPage from './pages/PabrikKategoriPage';
 import FormUpload from './pages/FormUpload';
 import LayoutWrapper from './components/LayoutWrapper';
 import ProtectedRoute from './components/ProtectedRoute';
+import NotFound from './pages/NotFound';
 
 function App() {
   return (
@@ -27,6 +28,10 @@ function App() {
             </Route>
           </Route>
         </Route>
+
+{/* Not Found Route */}
+        <Route path="*" element={<NotFound />} />
+
       </Routes>
     </AuthProvider>
   );
