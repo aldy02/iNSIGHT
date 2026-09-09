@@ -13,7 +13,7 @@ function App() {
   return (
     <AuthProvider>
       <Routes>
-         <Route path="/" element={<Navigate to="/login" replace />} />
+        <Route path="/" element={<Navigate to="/login" replace />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
 
@@ -30,7 +30,7 @@ function App() {
           </Route>
         </Route>
 
-{/* Not Found Route */}
+        {/* Not Found Route */}
         <Route path="*" element={<NotFound />} />
 
       </Routes>

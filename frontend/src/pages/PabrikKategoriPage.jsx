@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import { Loader2 } from 'lucide-react';
+import { Loader2, ChevronDown, ChevronUp, Table2 } from 'lucide-react';
 import ParameterCard from '../components/ParameterCard';
 import DataTable from '../components/DataTable';
 import DateRangePicker from '../components/DateRangePicker';
@@ -66,6 +66,7 @@ function GroupSection({ kategoriSlug, group, activeRange }) {
 
   const [readingsByParam, setReadingsByParam] = useState({});
   const [loadingReadings, setLoadingReadings] = useState(true);
+  const [showTable, setShowTable] = useState(true);
 
   const handleSelectSub = (slug) => {
     const sub = subCategories.find((s) => s.slug === slug);
@@ -146,11 +147,10 @@ function GroupSection({ kategoriSlug, group, activeRange }) {
               <button
                 key={sub.slug}
                 onClick={() => handleSelectSub(sub.slug)}
-                className={`px-3.5 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                  activeSubSlug === sub.slug
+                className={`px-3.5 py-1.5 rounded-md text-sm font-medium transition-colors ${activeSubSlug === sub.slug
                     ? 'bg-white text-[#1B2559] shadow-sm'
                     : 'text-[#38485D] hover:text-[#1B2559]'
-                }`}
+                  }`}
               >
                 {sub.nama}
               </button>
@@ -164,11 +164,10 @@ function GroupSection({ kategoriSlug, group, activeRange }) {
               <button
                 key={unit.id}
                 onClick={() => handleSelectUnit(unit.id)}
-                className={`px-3.5 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                  activeUnitId === unit.id
+                className={`px-3.5 py-1.5 rounded-md text-sm font-medium transition-colors ${activeUnitId === unit.id
                     ? 'bg-white text-[#1B2559] shadow-sm'
                     : 'text-[#38485D] hover:text-[#1B2559]'
-                }`}
+                  }`}
               >
                 {unit.nama}
               </button>
@@ -197,11 +196,22 @@ function GroupSection({ kategoriSlug, group, activeRange }) {
           </div>
 
           <div className="mt-6">
-            <DataTable
-              rows={tableRows}
-              resetKey={`${kategoriSlug}-${activeSub.slug}-${activeUnit.id}-${activeRange.type}-${activeRange.days || ''}-${activeRange.start || ''}-${activeRange.end || ''}`}
-              unitColumnLabel={unitColumnLabel}
-            />
+            <button
+              onClick={() => setShowTable((prev) => !prev)}
+              className="flex items-center gap-2 text-sm font-medium text-[#1B2559] hover:text-[#003399] transition-colors mb-3"
+            >
+              <Table2 size={16} />
+              {showTable ? 'Sembunyikan Tabel Data' : 'Tampilkan Tabel Data'}
+              {showTable ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            </button>
+
+            {showTable && (
+              <DataTable
+                rows={tableRows}
+                resetKey={`${kategoriSlug}-${activeSub.slug}-${activeUnit.id}-${activeRange.type}-${activeRange.days || ''}-${activeRange.start || ''}-${activeRange.end || ''}`}
+                unitColumnLabel={unitColumnLabel}
+              />
+            )}
           </div>
         </>
       )}
@@ -271,11 +281,10 @@ function KategoriContent({ plantId, kategoriSlug }) {
             <button
               key={opt.days}
               onClick={() => handleSelectPreset(opt.days)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
-                activeRange.type === 'preset' && activeRange.days === opt.days
+              className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${activeRange.type === 'preset' && activeRange.days === opt.days
                   ? 'bg-[#003399] text-white border-[#003399]'
                   : 'bg-white text-[#1B2559] border-slate-200 hover:border-[#003399]'
-              }`}
+                }`}
             >
               {opt.label}
             </button>
