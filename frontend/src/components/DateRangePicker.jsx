@@ -1,5 +1,42 @@
 import { useState, useRef, useEffect } from 'react';
-import { CalendarRange } from 'lucide-react';
+import { CalendarRange, Calendar } from 'lucide-react';
+
+function DateField({ value, onChange, min }) {
+  const inputRef = useRef(null);
+
+  const displayValue = value ? formatDisplay(value) : '';
+
+  return (
+    <div className="relative">
+      <input
+        type="text"
+        readOnly
+        value={displayValue}
+        placeholder="dd/mm/yyyy"
+        onClick={() => inputRef.current?.showPicker?.() || inputRef.current?.focus()}
+        className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-[#003399] text-[#1B2559] cursor-pointer"
+      />
+      <Calendar
+        size={16}
+        className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8292AA] pointer-events-none"
+      />
+      <input
+        ref={inputRef}
+        type="date"
+        value={value}
+        min={min || undefined}
+        onChange={(e) => onChange(e.target.value)}
+        className="absolute inset-0 opacity-0 pointer-events-none"
+        tabIndex={-1}
+      />
+    </div>
+  );
+}
+
+function formatDisplay(dateStr) {
+  const [y, m, d] = dateStr.split('-');
+  return `${d}/${m}/${y}`;
+}
 
 export default function DateRangePicker({ isActive, value, onApply }) {
   const [open, setOpen] = useState(false);
@@ -51,22 +88,11 @@ export default function DateRangePicker({ isActive, value, onApply }) {
           <div className="space-y-3">
             <div>
               <label className="block text-xs text-[#8292AA] mb-1">Dari Tanggal</label>
-              <input
-                type="date"
-                value={draftStart}
-                onChange={(e) => setDraftStart(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-[#003399] text-[#1B2559]"
-              />
+              <DateField value={draftStart} onChange={setDraftStart} />
             </div>
             <div>
               <label className="block text-xs text-[#8292AA] mb-1">Sampai Tanggal</label>
-              <input
-                type="date"
-                value={draftEnd}
-                min={draftStart || undefined}
-                onChange={(e) => setDraftEnd(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-[#003399] text-[#1B2559]"
-              />
+              <DateField value={draftEnd} onChange={setDraftEnd} min={draftStart} />
             </div>
           </div>
 
@@ -89,6 +115,5 @@ export default function DateRangePicker({ isActive, value, onApply }) {
 
 function formatShort(dateStr) {
   const [y, m, d] = dateStr.split('-');
-  const bulan = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
-  return `${parseInt(d)} ${bulan[parseInt(m) - 1]}`;
+  return `${d}/${m}/${y}`;
 }
