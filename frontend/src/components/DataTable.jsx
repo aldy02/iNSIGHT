@@ -69,50 +69,52 @@ export default function DataTable({ rows, resetKey, subKategoriNama, unitColumnL
                         </p>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-2 shrink-0">
-                        <div className="relative">
+                    <div className="flex flex-col gap-2 w-full lg:w-auto shrink-0">
+                        <div className="relative w-full">
                             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8292AA]" />
                             <input
                                 type="text"
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}
                                 placeholder="Cari parameter / unit..."
-                                className="pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-[#003399] w-56 text-[#1B2559]"
+                                className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-[#003399] text-[#1B2559]"
                             />
                         </div>
 
-                        <div className="relative">
-                            <select
-                                value={statusFilter}
-                                onChange={(e) => setStatusFilter(e.target.value)}
-                                className="appearance-none pl-3 pr-8 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-[#003399] text-[#1B2559] bg-white cursor-pointer"
-                            >
-                                {STATUS_OPTIONS.map((opt) => (
-                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                                ))}
-                            </select>
-                            <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#8292AA] pointer-events-none" />
-                        </div>
+                        <div className="grid grid-cols-2 gap-2 lg:flex lg:w-auto">
+                            <div className="relative">
+                                <select
+                                    value={statusFilter}
+                                    onChange={(e) => setStatusFilter(e.target.value)}
+                                    className="w-full appearance-none pl-3 pr-8 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-[#003399] text-[#1B2559] bg-white cursor-pointer"
+                                >
+                                    {STATUS_OPTIONS.map((opt) => (
+                                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                    ))}
+                                </select>
+                                <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#8292AA] pointer-events-none" />
+                            </div>
 
-                        <div className="relative">
-                            <select
-                                value={parameterFilter}
-                                onChange={(e) => setParameterFilter(e.target.value)}
-                                className="appearance-none pl-3 pr-8 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-[#003399] text-[#1B2559] bg-white cursor-pointer"
-                            >
-                                <option value="all">Semua Parameter</option>
-                                {parameterOptions.map((p) => (
-                                    <option key={p} value={p}>{p}</option>
-                                ))}
-                            </select>
-                            <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#8292AA] pointer-events-none" />
+                            <div className="relative">
+                                <select
+                                    value={parameterFilter}
+                                    onChange={(e) => setParameterFilter(e.target.value)}
+                                    className="w-full appearance-none pl-3 pr-8 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-[#003399] text-[#1B2559] bg-white cursor-pointer"
+                                >
+                                    <option value="all">Semua Parameter</option>
+                                    {parameterOptions.map((p) => (
+                                        <option key={p} value={p}>{p}</option>
+                                    ))}
+                                </select>
+                                <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#8292AA] pointer-events-none" />
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            {/* Table */}
-            <div className="overflow-x-auto">
+            {/* Table - Desktop */}
+            <div className="hidden md:block overflow-x-auto">
                 <table className="w-full text-sm table-fixed">
                     <thead>
                         <tr className="border-b border-slate-100 text-left">
@@ -156,6 +158,47 @@ export default function DataTable({ rows, resetKey, subKategoriNama, unitColumnL
                 </table>
             </div>
 
+            {/* Card List - Mobile */}
+            <div className="md:hidden divide-y divide-slate-100">
+                {pageRows.length === 0 ? (
+                    <div className="px-5 py-10 text-center text-[#8292AA] text-sm">
+                        Tidak ada data yang cocok dengan pencarian/filter.
+                    </div>
+                ) : (
+                    pageRows.map((row, idx) => {
+                        const statusInfo = STATUS_STYLE[row.status] || STATUS_STYLE.no_kop;
+                        return (
+                            <div key={idx} className="p-5">
+                                <div className="flex items-start justify-between gap-3 mb-1">
+                                    <h3 className="text-base font-bold text-[#1B2559]">{row.parameterNama}</h3>
+                                    <span className={`shrink-0 inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-full whitespace-nowrap ${statusInfo.className}`}>
+                                        {statusInfo.label}
+                                    </span>
+                                </div>
+                                <p className="text-xs text-[#F75807] mb-4">{row.unitNama}</p>
+
+                                <div className="space-y-2 text-sm">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-[#8292AA]">Tanggal</span>
+                                        <span className="font-medium text-[#1B2559]">{row.label}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-[#8292AA]">Nilai Aktual</span>
+                                        <span className="font-medium text-[#1B2559]">
+                                            {row.nilai}{row.satuan ? ` ${row.satuan}` : ''}
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-[#8292AA]">KOP</span>
+                                        <span className="font-medium text-[#1B2559]">{formatKop(row.kop, row.satuan)}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })
+                )}
+            </div>
+
             {/* Pagination */}
             <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-6 py-4 border-t border-slate-100">
                 <p className="text-xs text-[#8292AA]">
@@ -176,8 +219,8 @@ export default function DataTable({ rows, resetKey, subKategoriNama, unitColumnL
                             key={p}
                             onClick={() => setPage(p)}
                             className={`w-8 h-8 flex items-center justify-center rounded-lg text-sm font-medium transition-colors ${p === currentPage
-                                    ? 'bg-[#003399] text-white'
-                                    : 'text-[#1B2559] hover:bg-slate-100'
+                                ? 'bg-[#003399] text-white'
+                                : 'text-[#1B2559] hover:bg-slate-100'
                                 }`}
                         >
                             {p}
