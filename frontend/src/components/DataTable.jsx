@@ -69,8 +69,8 @@ export default function DataTable({ rows, resetKey, subKategoriNama, unitColumnL
                         </p>
                     </div>
 
-                    <div className="flex flex-col gap-2 w-full lg:w-auto shrink-0">
-                        <div className="relative w-full">
+                    <div className="flex flex-col md:flex-row md:items-center gap-2 w-full lg:w-auto shrink-0">
+                        <div className="relative w-full md:w-56">
                             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8292AA]" />
                             <input
                                 type="text"
@@ -81,12 +81,12 @@ export default function DataTable({ rows, resetKey, subKategoriNama, unitColumnL
                             />
                         </div>
 
-                        <div className="grid grid-cols-2 gap-2 lg:flex lg:w-auto">
+                        <div className="grid grid-cols-2 md:flex gap-2 shrink-0">
                             <div className="relative">
                                 <select
                                     value={statusFilter}
                                     onChange={(e) => setStatusFilter(e.target.value)}
-                                    className="w-full appearance-none pl-3 pr-8 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-[#003399] text-[#1B2559] bg-white cursor-pointer"
+                                    className="w-full md:w-40 appearance-none pl-3 pr-8 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-[#003399] text-[#1B2559] bg-white cursor-pointer"
                                 >
                                     {STATUS_OPTIONS.map((opt) => (
                                         <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -99,7 +99,7 @@ export default function DataTable({ rows, resetKey, subKategoriNama, unitColumnL
                                 <select
                                     value={parameterFilter}
                                     onChange={(e) => setParameterFilter(e.target.value)}
-                                    className="w-full appearance-none pl-3 pr-8 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-[#003399] text-[#1B2559] bg-white cursor-pointer"
+                                    className="w-full md:w-44 appearance-none pl-3 pr-8 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-[#003399] text-[#1B2559] bg-white cursor-pointer"
                                 >
                                     <option value="all">Semua Parameter</option>
                                     {parameterOptions.map((p) => (
