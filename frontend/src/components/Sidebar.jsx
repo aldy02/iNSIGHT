@@ -15,7 +15,17 @@ const PLANTS = [
   { kode: 'P1A', label: 'Pabrik 1A' },
   { kode: 'P2', label: 'Pabrik 2' },
   { kode: 'P3', label: 'Pabrik 3' },
-  { kode: 'P4', label: 'Pabrik 4' },
+  {
+    kode: 'P4',
+    label: 'Pabrik 4',
+    subMenu: [
+      { label: 'Desalination', slug: 'desalination' },
+      { label: 'Demineralization', slug: 'demineralization' },
+      { label: 'Boiler Feed Water', slug: 'boiler-feed-water' },
+      { label: 'Boiler Water', slug: 'boiler-water' },
+      { label: 'Steam', slug: 'steam' }
+    ]
+  },
   { kode: 'P5', label: 'Pabrik 5' },
   {
     kode: 'P6',
@@ -67,12 +77,12 @@ export default function Sidebar({ isOpen, onClose }) {
   const isCategoryActive = (kode, slug) => location.pathname.startsWith(`/pabrik/${kode}/${slug}`);
   const isLeafActive = (path) => location.pathname === path;
 
-const isChildActive = (catPath, childSlug, siblings) => {
-  if (location.pathname !== catPath) return false;
-  const groupParam = searchParams.get('group');
-  if (groupParam) return groupParam === childSlug;
-  return siblings[0].slug === childSlug;
-};
+  const isChildActive = (catPath, childSlug, siblings) => {
+    if (location.pathname !== catPath) return false;
+    const groupParam = searchParams.get('group');
+    if (groupParam) return groupParam === childSlug;
+    return siblings[0].slug === childSlug;
+  };
 
   const baseText = 'text-[#8292AA]';
   const activeStyle = 'bg-[#003399] text-white';
