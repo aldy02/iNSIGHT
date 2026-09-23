@@ -29,7 +29,7 @@ function readWorkbook(fileBuffer) {
   return XLSX.read(fileBuffer, { type: 'buffer', cellDates: false });
 }
 
-// Cari merge range yang memuat cell (row, col). Null kalau cell itu tidak ter-merge.
+//Find merge range
 function findMergeRange(merges, row, col) {
   if (!merges) return null;
   for (const m of merges) {
@@ -38,8 +38,7 @@ function findMergeRange(merges, row, col) {
   return null;
 }
 
-// Ambil nilai efektif 1 cell, resolve merge (ambil dari pojok kiri-atas range merge-nya).
-// Ini kunci untuk "menurunkan" nilai Area/Kategori/Sub/Unit ke tiap kolom di bawah merge-nya.
+// Get cell value from left (resolve merge) to get child value at the bottom
 function getCellValue(ws, merges, row, col) {
   const range = findMergeRange(merges, row, col);
   const r = range ? range.s.r : row;
@@ -47,11 +46,8 @@ function getCellValue(ws, merges, row, col) {
   const cell = ws[XLSX.utils.encode_cell({ r, c })];
   return cell ? cell.v : undefined;
 }
-
-/**
- * Parse 1 sheet format horizontal (multi-blok, tiap blok punya kolom "Tanggal" sendiri).
- * Struktur header per blok SELALU 5 level: Area > Kategori Utama > Sub Kategori > Unit > Parameter.
- */
+// Parse sheet horizontal format (multiple row support)
+// 5 level header (Area > Kategori Utama > Sub Kategori > Unit > Parameter)
 function parseSheet(workbook, sheetName) {
   const ws = workbook.Sheets[sheetName];
   if (!ws) throw new Error(`Sheet "${sheetName}" tidak ditemukan di file`);
@@ -59,7 +55,7 @@ function parseSheet(workbook, sheetName) {
   const merges = ws['!merges'] || [];
   const range = XLSX.utils.decode_range(ws['!ref']);
 
-  // 1. Cari semua kolom "Tanggal" beserta rentang baris header-nya (dari merge vertikal sel itu)
+  // Find all date column and header
   const tanggalBlocks = [];
   for (let r = range.s.r; r <= range.e.r; r++) {
     for (let c = range.s.c; c <= range.e.c; c++) {
@@ -93,35 +89,35 @@ function parseSheet(workbook, sheetName) {
     const dataStartRow = headerEndRow + 1;
     const headerRowCount = headerEndRow - headerStartRow + 1;
 
-    // Sanity check: header block ini HARUS persis 5 level (Area, Kategori, Sub, Unit, Parameter)
+    // Sanity check: must be 5 level header (Area, Kategori, Sub, Unit, Parameter)
     if (headerRowCount !== 5) {
       parseErrors.push({
         excelRow: headerStartRow + 1,
         reason: `Blok Tanggal di kolom ${XLSX.utils.encode_col(block.col)} punya ${headerRowCount} baris header, seharusnya 5 (Area/Kategori Utama/Sub Kategori/Unit/Parameter). Blok ini dilewati.`,
       });
-      return; // skip seluruh blok ini, jangan sampai salah alamat data
+      return;
     }
 
-    // 2. Bangun "alamat lengkap" tiap kolom data di blok ini
+    // Create column path
     const columnPaths = {};
     for (let c = dataColStart; c <= dataColEnd; c++) {
       const levels = [];
       for (let r = headerStartRow; r <= headerEndRow; r++) {
         levels.push(normalize(getCellValue(ws, merges, r, c)));
       }
-      columnPaths[c] = levels; // [area, kategoriUtama, subKategori, unit, parameter]
+      columnPaths[c] = levels; // output: [area, kategoriUtama, subKategori, unit, parameter]
     }
 
-    // 3. Baca baris data, mulai persis setelah header block ini berakhir
+    // Read data per each row after header
     for (let r = dataStartRow; r <= range.e.r; r++) {
       const tanggalRaw = getCellValue(ws, merges, r, block.col);
       const tanggal = parseTanggal(tanggalRaw);
-      if (!tanggal) continue; // blok ini tidak punya data di tanggal ini -> wajar, skip (bukan error)
+      if (!tanggal) continue; // no date skip
 
       for (let c = dataColStart; c <= dataColEnd; c++) {
         const rawVal = getCellValue(ws, merges, r, c);
         const nilaiText = normalize(rawVal);
-        if (nilaiText === '') continue; // sel kosong -> tidak ada titik data, skip
+        if (nilaiText === '') continue; // No cell value also skip
 
         const [area, kategoriUtama, subKategori, unit, parameter] = columnPaths[c];
         if (!area || !kategoriUtama || !subKategori || !unit || !parameter) {

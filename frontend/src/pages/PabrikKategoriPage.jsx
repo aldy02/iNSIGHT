@@ -115,7 +115,7 @@ function GroupSection({ kategoriSlug, group, activeRange }) {
   const tableRows = activeSub.parameters
     .flatMap((param) => {
       const readings = readingsByParam[param.id] || [];
-      const kop = activeUnit.kop?.[param.id];   // ← sebelumnya: activeSub.kop[param.id]
+      const kop = activeUnit.kop?.[param.id];
       return readings.map((r) => ({
         tanggal: r.tanggal,
         label: r.label,
@@ -183,16 +183,23 @@ function GroupSection({ kategoriSlug, group, activeRange }) {
       ) : (
         <>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {activeSub.parameters.map((param) => (
-              <ParameterCard
-                key={param.id}
-                parameter={param}
-                unit={activeUnit}
-                readings={readingsByParam[param.id] || []}
-                kop={activeUnit.kop?.[param.id]}
-                satuan={param.satuan}
-              />
-            ))}
+            {activeSub.parameters.map((param, idx) => {
+              const isLastOdd =
+                activeSub.parameters.length % 2 === 1 &&
+                idx === activeSub.parameters.length - 1;
+
+              return (
+                <div key={param.id} className={isLastOdd ? 'lg:col-span-2' : ''}>
+                  <ParameterCard
+                    parameter={param}
+                    unit={activeUnit}
+                    readings={readingsByParam[param.id] || []}
+                    kop={activeUnit.kop?.[param.id]}
+                    satuan={param.satuan}
+                  />
+                </div>
+              );
+            })}
           </div>
 
           <div className="mt-6">
