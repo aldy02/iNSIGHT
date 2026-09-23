@@ -39,23 +39,22 @@ exports.getStructure = async (req, res) => {
     });
 
     const subCategoriesData = subCategories.map((sub) => {
-      const units = sub.Units.map((u) => ({ id: String(u.id), nama: u.nama }));
-
       const parameterMap = new Map();
-      const kopMap = {};
 
-      sub.Units.forEach((u) => {
+      const units = sub.Units.map((u) => {
+        const kop = {};
         u.KopParameters.forEach((kp) => {
           const p = kp.Parameter;
           const pid = String(p.id);
           parameterMap.set(pid, { id: pid, nama: p.nama, satuan: kp.satuan || '' });
-          kopMap[pid] = {
+          kop[pid] = {
             min: kp.min_value != null ? parseFloat(kp.min_value) : null,
             max: kp.max_value != null ? parseFloat(kp.max_value) : null,
             minInclusive: kp.min_inclusive,
             maxInclusive: kp.max_inclusive,
           };
         });
+        return { id: String(u.id), nama: u.nama, kop };
       });
 
       return {
@@ -64,7 +63,6 @@ exports.getStructure = async (req, res) => {
         slug: toSlug(sub.nama),
         units,
         parameters: [...parameterMap.values()],
-        kop: kopMap,
       };
     });
 

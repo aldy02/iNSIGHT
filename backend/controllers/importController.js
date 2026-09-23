@@ -2,11 +2,11 @@ const { sequelize, Plant, Area, MainCategory, SubCategory, Unit, Parameter, Dail
 const { readWorkbook, parseSheet, normalize } = require('../utils/excelParser');
 
 function parseNilaiNumeric(nilaiText) {
-  const str = String(nilaiText).trim();
-  if (str === '' || str === '-') return null;
-  const cleaned = str.replace(/^[<>]=?/, ''); // Hapus tanda "<" / ">"
-  const num = parseFloat(cleaned);
-  return Number.isNaN(num) ? null : num;
+    const str = String(nilaiText).trim();
+    if (str === '' || str === '-') return null;
+    const cleaned = str.replace(/^[<>]=?/, ''); // Hapus tanda "<" / ">"
+    const num = parseFloat(cleaned);
+    return Number.isNaN(num) ? null : num;
 }
 
 async function buildUnitMap(plantId) {
@@ -64,18 +64,25 @@ async function saveReading({ tanggal, unitId, parameterId, nilaiText, userId }, 
 
     await DailyReading.create(
         {
-          tanggal,
-          unit_id: unitId,
-          parameter_id: parameterId,
-          nilai_text: nilaiText,
-          nilai_numeric: nilaiNumeric,
-          source: 'import',
-          input_by: userId,
+            tanggal,
+            unit_id: unitId,
+            parameter_id: parameterId,
+            nilai_text: nilaiText,
+            nilai_numeric: nilaiNumeric,
+            source: 'import',
+            input_by: userId,
         },
         { transaction }
     );
     return 'created';
 }
+
+// Parameter DO ditulis dengan Area "Lingkungan" di Excel,
+// tapi unit fisiknya sama dengan BFW BB 1/2 di Area "Boiler Batubara".
+const AREA_ALIAS = {
+    'lingkungan|boiler feed water|bfw bb 1|-': 'boiler batubara|boiler feed water|bfw bb 1|-',
+    'lingkungan|boiler feed water|bfw bb 2|-': 'boiler batubara|boiler feed water|bfw bb 2|-',
+};
 
 // Proses sheet
 async function processPlantSheet({ workbook, sheetName, plant, userId, transaction }) {
@@ -93,7 +100,10 @@ async function processPlantSheet({ workbook, sheetName, plant, userId, transacti
     let updatedCount = 0;
 
     for (const row of rows) {
-        const unitKey = [row.area, row.kategoriUtama, row.subKategori, row.unit].map((s) => s.toLowerCase()).join('|');
+        let unitKey = [row.area, row.kategoriUtama, row.subKategori, row.unit].map((s) => s.toLowerCase()).join('|');
+        if (AREA_ALIAS[unitKey]) {
+            unitKey = AREA_ALIAS[unitKey];
+        }
         const unitId = unitMap.get(unitKey);
         const parameterId = parameterMap.get(row.parameter.toLowerCase());
 

@@ -115,7 +115,7 @@ function GroupSection({ kategoriSlug, group, activeRange }) {
   const tableRows = activeSub.parameters
     .flatMap((param) => {
       const readings = readingsByParam[param.id] || [];
-      const kop = activeSub.kop[param.id];
+      const kop = activeUnit.kop?.[param.id];   // ← sebelumnya: activeSub.kop[param.id]
       return readings.map((r) => ({
         tanggal: r.tanggal,
         label: r.label,
@@ -148,8 +148,8 @@ function GroupSection({ kategoriSlug, group, activeRange }) {
                 key={sub.slug}
                 onClick={() => handleSelectSub(sub.slug)}
                 className={`px-3.5 py-1.5 rounded-md text-sm font-medium transition-colors ${activeSubSlug === sub.slug
-                    ? 'bg-white text-[#1B2559] shadow-sm'
-                    : 'text-[#38485D] hover:text-[#1B2559]'
+                  ? 'bg-white text-[#1B2559] shadow-sm'
+                  : 'text-[#38485D] hover:text-[#1B2559]'
                   }`}
               >
                 {sub.nama}
@@ -165,8 +165,8 @@ function GroupSection({ kategoriSlug, group, activeRange }) {
                 key={unit.id}
                 onClick={() => handleSelectUnit(unit.id)}
                 className={`px-3.5 py-1.5 rounded-md text-sm font-medium transition-colors ${activeUnitId === unit.id
-                    ? 'bg-white text-[#1B2559] shadow-sm'
-                    : 'text-[#38485D] hover:text-[#1B2559]'
+                  ? 'bg-white text-[#1B2559] shadow-sm'
+                  : 'text-[#38485D] hover:text-[#1B2559]'
                   }`}
               >
                 {unit.nama}
@@ -189,7 +189,7 @@ function GroupSection({ kategoriSlug, group, activeRange }) {
                 parameter={param}
                 unit={activeUnit}
                 readings={readingsByParam[param.id] || []}
-                kop={activeSub.kop[param.id]}
+                kop={activeUnit.kop?.[param.id]}
                 satuan={param.satuan}
               />
             ))}
@@ -282,8 +282,8 @@ function KategoriContent({ plantId, kategoriSlug }) {
               key={opt.days}
               onClick={() => handleSelectPreset(opt.days)}
               className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${activeRange.type === 'preset' && activeRange.days === opt.days
-                  ? 'bg-[#003399] text-white border-[#003399]'
-                  : 'bg-white text-[#1B2559] border-slate-200 hover:border-[#003399]'
+                ? 'bg-[#003399] text-white border-[#003399]'
+                : 'bg-white text-[#1B2559] border-slate-200 hover:border-[#003399]'
                 }`}
             >
               {opt.label}
