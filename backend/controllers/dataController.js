@@ -6,14 +6,21 @@ function toSlug(str) {
   return str.toLowerCase().trim().replace(/\s+/g, '-');
 }
 
-// Grouping sub kategori
-const GROUP_PER_SUBCATEGORY = ['Boiler Water'];
+// Grouping per sub kategori, diatur PER PABRIK (kode pabrik -> daftar kategori utama).
+const GROUP_PER_SUBCATEGORY = {
+  P6: ['Boiler Water'],
+};
 
 exports.getStructure = async (req, res) => {
   try {
     const { plantId, kategori } = req.query;
     if (!plantId || !kategori) {
       return res.status(400).json({ message: 'plantId dan kategori wajib diisi' });
+    }
+
+    const plant = await Plant.findByPk(plantId);
+    if (!plant) {
+      return res.status(404).json({ message: `Pabrik dengan id ${plantId} tidak ditemukan` });
     }
 
     const mainCategories = await MainCategory.findAll({
@@ -66,8 +73,9 @@ exports.getStructure = async (req, res) => {
       };
     });
 
-    // Implementasi aturan grouping
-    const groups = GROUP_PER_SUBCATEGORY.includes(mainCategory.nama)
+    // Implementasi aturan grouping (per pabrik)
+    const groupedCategories = GROUP_PER_SUBCATEGORY[plant.kode?.toUpperCase()] || [];
+    const groups = groupedCategories.includes(mainCategory.nama)
       ? subCategoriesData.map((sub) => ({ subCategories: [sub] }))
       : [{ subCategories: subCategoriesData }];
 

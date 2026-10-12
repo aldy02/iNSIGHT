@@ -5,23 +5,52 @@ function normalize(str) {
   return String(str).trim().replace(/\s+/g, ' ');
 }
 
+function pad2(n) {
+  return String(n).padStart(2, '0');
+}
+
+function isValidDate(y, m, d) {
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return (
+    dt.getUTCFullYear() === y &&
+    dt.getUTCMonth() === m - 1 &&
+    dt.getUTCDate() === d
+  );
+}
+
+// Selalu mengembalikan string 'YYYY-MM-DD' atau null
 function parseTanggal(value) {
   if (value === null || value === undefined || value === '') return null;
 
+  // Angka serial Excel
   if (typeof value === 'number') {
     const parsed = XLSX.SSF.parse_date_code(value);
     if (!parsed) return null;
-    const mm = String(parsed.m).padStart(2, '0');
-    const dd = String(parsed.d).padStart(2, '0');
-    return `${parsed.y}-${mm}-${dd}`;
+    return `${parsed.y}-${pad2(parsed.m)}-${pad2(parsed.d)}`;
   }
 
-  const str = String(value).trim();
-  const match = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (match) {
-    const [, dd, mm, yyyy] = match;
-    return `${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`;
+  // Objek Date (jika cellDates: true)
+  if (value instanceof Date && !isNaN(value)) {
+    return `${value.getFullYear()}-${pad2(value.getMonth() + 1)}-${pad2(value.getDate())}`;
   }
+
+  // Teks: buang spasi dan tanda kutip/apostrof di awal-akhir
+  const str = String(value).trim().replace(/^['"‘’“”]+|['"‘’“”]+$/g, '');
+
+  // Format ISO: 2026-04-16 (juga 2026/04/16 atau 2026-04-16T00:00:00)
+  let match = str.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:[T\s].*)?$/);
+  if (match) {
+    const y = Number(match[1]), m = Number(match[2]), d = Number(match[3]);
+    return isValidDate(y, m, d) ? `${y}-${pad2(m)}-${pad2(d)}` : null;
+  }
+
+  // Format lama: dd/mm/yyyy atau dd-mm-yyyy
+  match = str.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+  if (match) {
+    const d = Number(match[1]), m = Number(match[2]), y = Number(match[3]);
+    return isValidDate(y, m, d) ? `${y}-${pad2(m)}-${pad2(d)}` : null;
+  }
+
   return null;
 }
 
@@ -29,7 +58,7 @@ function readWorkbook(fileBuffer) {
   return XLSX.read(fileBuffer, { type: 'buffer', cellDates: false });
 }
 
-//Find merge range
+// Cari range merge yang memuat sel (row, col)
 function findMergeRange(merges, row, col) {
   if (!merges) return null;
   for (const m of merges) {
@@ -38,7 +67,7 @@ function findMergeRange(merges, row, col) {
   return null;
 }
 
-// Get cell value from left (resolve merge) to get child value at the bottom
+// Ambil nilai sel; jika sel bagian dari merge, ambil dari sel kiri-atas merge
 function getCellValue(ws, merges, row, col) {
   const range = findMergeRange(merges, row, col);
   const r = range ? range.s.r : row;
@@ -46,8 +75,9 @@ function getCellValue(ws, merges, row, col) {
   const cell = ws[XLSX.utils.encode_cell({ r, c })];
   return cell ? cell.v : undefined;
 }
-// Parse sheet horizontal format (multiple row support)
-// 5 level header (Area > Kategori Utama > Sub Kategori > Unit > Parameter)
+
+// Parse sheet format horizontal (banyak blok Tanggal)
+// Header 5 level: Area > Kategori Utama > Sub Kategori > Unit > Parameter
 function parseSheet(workbook, sheetName) {
   const ws = workbook.Sheets[sheetName];
   if (!ws) throw new Error(`Sheet "${sheetName}" tidak ditemukan di file`);
@@ -55,7 +85,7 @@ function parseSheet(workbook, sheetName) {
   const merges = ws['!merges'] || [];
   const range = XLSX.utils.decode_range(ws['!ref']);
 
-  // Find all date column and header
+  // Cari semua kolom "Tanggal" beserta baris headernya
   const tanggalBlocks = [];
   for (let r = range.s.r; r <= range.e.r; r++) {
     for (let c = range.s.c; c <= range.e.c; c++) {
@@ -80,8 +110,7 @@ function parseSheet(workbook, sheetName) {
   const rows = [];
   const parseErrors = [];
 
-  tanggalBlocks.forEach((block) => {
-    const idx = tanggalBlocks.indexOf(block);
+  tanggalBlocks.forEach((block, idx) => {
     const nextBlockCol = idx + 1 < tanggalBlocks.length ? tanggalBlocks[idx + 1].col : range.e.c + 1;
     const dataColStart = block.col + 1;
     const dataColEnd = nextBlockCol - 1;
@@ -89,7 +118,7 @@ function parseSheet(workbook, sheetName) {
     const dataStartRow = headerEndRow + 1;
     const headerRowCount = headerEndRow - headerStartRow + 1;
 
-    // Sanity check: must be 5 level header (Area, Kategori, Sub, Unit, Parameter)
+    // Harus 5 level header
     if (headerRowCount !== 5) {
       parseErrors.push({
         excelRow: headerStartRow + 1,
@@ -98,26 +127,36 @@ function parseSheet(workbook, sheetName) {
       return;
     }
 
-    // Create column path
+    // Susun path header per kolom
     const columnPaths = {};
     for (let c = dataColStart; c <= dataColEnd; c++) {
       const levels = [];
       for (let r = headerStartRow; r <= headerEndRow; r++) {
         levels.push(normalize(getCellValue(ws, merges, r, c)));
       }
-      columnPaths[c] = levels; // output: [area, kategoriUtama, subKategori, unit, parameter]
+      columnPaths[c] = levels; // [area, kategoriUtama, subKategori, unit, parameter]
     }
 
-    // Read data per each row after header
+    // Baca data tiap baris setelah header
     for (let r = dataStartRow; r <= range.e.r; r++) {
       const tanggalRaw = getCellValue(ws, merges, r, block.col);
       const tanggal = parseTanggal(tanggalRaw);
-      if (!tanggal) continue; // no date skip
+
+      if (!tanggal) {
+        // Sel kosong dilewati diam-diam, tanggal salah format dilaporkan
+        if (tanggalRaw !== undefined && String(tanggalRaw).trim() !== '') {
+          parseErrors.push({
+            excelRow: r + 1,
+            reason: `Format tanggal tidak dikenali: "${tanggalRaw}"`,
+          });
+        }
+        continue;
+      }
 
       for (let c = dataColStart; c <= dataColEnd; c++) {
         const rawVal = getCellValue(ws, merges, r, c);
         const nilaiText = normalize(rawVal);
-        if (nilaiText === '') continue; // No cell value also skip
+        if (nilaiText === '') continue; // sel kosong dilewati
 
         const [area, kategoriUtama, subKategori, unit, parameter] = columnPaths[c];
         if (!area || !kategoriUtama || !subKategori || !unit || !parameter) {
@@ -136,4 +175,4 @@ function parseSheet(workbook, sheetName) {
   return { rows, parseErrors };
 }
 
-module.exports = { readWorkbook, parseSheet, normalize };
+module.exports = { readWorkbook, parseSheet, normalize, parseTanggal };

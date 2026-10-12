@@ -40,8 +40,11 @@ function rangeToDates(activeRange) {
   return { startDate: fmt(start), endDate: fmt(end) };
 }
 
-function GroupSection({ kategoriSlug, group, activeRange }) {
+function GroupSection({ kategoriSlug, kategoriLabel, group, activeRange }) {
   const subCategories = group.subCategories;
+
+  // Kalau Sub kategori "-" maka menampilkan nama kategori (Steam, Boiler Water, dst.)
+  const subLabel = (sub) => (sub.nama === '-' ? kategoriLabel : sub.nama);
 
   const groupKey = subCategories[0].slug;
   const subParamKey = `sub_${groupKey}`;
@@ -119,7 +122,7 @@ function GroupSection({ kategoriSlug, group, activeRange }) {
       return readings.map((r) => ({
         tanggal: r.tanggal,
         label: r.label,
-        unitNama: activeUnit.nama === '-' ? activeSub.nama : activeUnit.nama,
+        unitNama: activeUnit.nama === '-' ? subLabel(activeSub) : activeUnit.nama,
         parameterNama: param.nama,
         nilai: r.nilai,
         satuan: param.satuan,
@@ -129,13 +132,17 @@ function GroupSection({ kategoriSlug, group, activeRange }) {
     })
     .sort((a, b) => (a.tanggal < b.tanggal ? 1 : -1));
 
-  const unitColumnLabel = activeUnit.nama === '-' ? 'Sub Kategori' : 'Unit';
+  // Kalau unit "-" dan sub kategori juga "-", kolom ini merujuk ke kategori
+  const unitColumnLabel =
+    activeUnit.nama === '-'
+      ? (activeSub.nama === '-' ? 'Kategori' : 'Sub Kategori')
+      : 'Unit';
 
   return (
     <div className="mb-10">
       <div className="mb-4 flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-2">
-          <h2 className="text-lg font-semibold text-[#1B2559]">{activeSub.nama}</h2>
+          <h2 className="text-lg font-semibold text-[#1B2559]">{subLabel(activeSub)}</h2>
           <span className="text-xs bg-slate-100 text-[#8292AA] px-2 py-0.5 rounded-full">
             {activeSub.parameters.length} Parameter
           </span>
@@ -152,7 +159,7 @@ function GroupSection({ kategoriSlug, group, activeRange }) {
                   : 'text-[#38485D] hover:text-[#1B2559]'
                   }`}
               >
-                {sub.nama}
+                {subLabel(sub)}
               </button>
             ))}
           </div>
@@ -311,6 +318,7 @@ function KategoriContent({ plantId, kategoriSlug }) {
         <GroupSection
           key={`${group.subCategories[0].slug}-${idx}`}
           kategoriSlug={kategoriSlug}
+          kategoriLabel={structure.label}
           group={group}
           activeRange={activeRange}
         />

@@ -79,9 +79,27 @@ async function saveReading({ tanggal, unitId, parameterId, nilaiText, userId }, 
 
 // Parameter DO ditulis dengan Area "Lingkungan" di Excel,
 // tapi unit fisiknya sama dengan BFW BB 1/2 di Area "Boiler Batubara".
-const AREA_ALIAS = {
-    'lingkungan|boiler feed water|bfw bb 1|-': 'boiler batubara|boiler feed water|bfw bb 1|-',
-    'lingkungan|boiler feed water|bfw bb 2|-': 'boiler batubara|boiler feed water|bfw bb 2|-',
+const PLANT_ALIAS = {
+    P6: {
+        'lingkungan|boiler feed water|bfw bb 1|-': 'boiler batubara|boiler feed water|bfw bb 1|-',
+        'lingkungan|boiler feed water|bfw bb 2|-': 'boiler batubara|boiler feed water|bfw bb 2|-',
+    },
+    P1A: {
+        'lingkungan|steam|-|-': 'ammonia|steam|-|-',
+    },
+    P2: {
+        // Excel Utility -> semua masuk area Ammonia
+        'utility|boiler feed water|utility|-': 'ammonia|boiler feed water|utility|-',
+        'utility|boiler water|package boiler water|-': 'ammonia|boiler water|package boiler water|-',
+        'utility|boiler water|whb water|-': 'ammonia|boiler water|whb water|-',
+        'utility|steam|package boiler steam|-': 'ammonia|steam|package boiler steam|-',
+        'utility|steam|whb steam|-': 'ammonia|steam|whb steam|-',
+        'utility|desalination|raw condensate tank|-': 'ammonia|desalination|raw condensate tank|-',
+        'utility|demineralization|mixedbed a|-': 'ammonia|demineralization|mixedbed a|-',
+        'utility|demineralization|mixedbed b|-': 'ammonia|demineralization|mixedbed b|-',
+        'utility|demineralization|mixedbed c|-': 'ammonia|demineralization|mixedbed c|-',
+        'utility|demineralization|mixedbed d|-': 'ammonia|demineralization|mixedbed d|-',
+    },
 };
 
 // Proses sheet
@@ -98,11 +116,12 @@ async function processPlantSheet({ workbook, sheetName, plant, userId, transacti
     const lookupErrors = [];
     let createdCount = 0;
     let updatedCount = 0;
+    const aliasMap = PLANT_ALIAS[plant.kode] || {};
 
     for (const row of rows) {
         let unitKey = [row.area, row.kategoriUtama, row.subKategori, row.unit].map((s) => s.toLowerCase()).join('|');
-        if (AREA_ALIAS[unitKey]) {
-            unitKey = AREA_ALIAS[unitKey];
+        if (aliasMap[unitKey]) {
+            unitKey = aliasMap[unitKey];
         }
         const unitId = unitMap.get(unitKey);
         const parameterId = parameterMap.get(row.parameter.toLowerCase());

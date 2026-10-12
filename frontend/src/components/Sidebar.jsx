@@ -12,8 +12,27 @@ import { useAuth } from '../contexts/AuthContext';
 import logoPupukKaltim from '../assets/Logo.png';
 
 const PLANTS = [
-  { kode: 'P1A', label: 'Pabrik 1A' },
-  { kode: 'P2', label: 'Pabrik 2' },
+  {
+    kode: 'P1A',
+    label: 'Pabrik 1A',
+    subMenu: [
+      { label: 'Desalination', slug: 'desalination' },
+      { label: 'Demineralization', slug: 'demineralization' },
+      { label: 'Boiler Feed Water', slug: 'boiler-feed-water' },
+      { label: 'Boiler Water', slug: 'boiler-water' },
+      { label: 'Steam', slug: 'steam' }
+    ]
+  },
+  {
+    kode: 'P2', label: 'Pabrik 2',
+    subMenu: [
+      { label: 'Desalination', slug: 'desalination' },
+      { label: 'Demineralization', slug: 'demineralization' },
+      { label: 'Boiler Feed Water', slug: 'boiler-feed-water' },
+      { label: 'Boiler Water', slug: 'boiler-water' },
+      { label: 'Steam', slug: 'steam' }
+    ]
+  },
   { kode: 'P3', label: 'Pabrik 3' },
   {
     kode: 'P4',
