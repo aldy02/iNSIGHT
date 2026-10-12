@@ -64,6 +64,11 @@ function GroupSection({ kategoriSlug, kategoriLabel, group, activeRange }) {
   const [activeUnitId, setActiveUnitId] = useState(initialUnit.id);
   const activeUnit = activeSub.units.find((unit) => unit.id === activeUnitId) || activeSub.units[0];
 
+  // Hanya parameter yang punya KOP di unit aktif.
+  // Kalau unit belum punya KOP sama sekali, tampilkan semua parameter sub kategori.
+  const unitParams = activeSub.parameters.filter((p) => activeUnit.kop?.[p.id]);
+  const visibleParams = unitParams.length > 0 ? unitParams : activeSub.parameters;
+
   const showSubTabs = subCategories.length > 1;
   const showUnitTabs = activeSub.units.length > 1;
 
@@ -103,7 +108,7 @@ function GroupSection({ kategoriSlug, kategoriLabel, group, activeRange }) {
 
     setLoadingReadings(true);
     Promise.all(
-      activeSub.parameters.map((param) =>
+      visibleParams.map((param) =>
         getReadings(activeUnit.id, param.id, startDate, endDate).then((data) => ({ paramId: param.id, data }))
       )
     )
@@ -115,7 +120,7 @@ function GroupSection({ kategoriSlug, kategoriLabel, group, activeRange }) {
       .finally(() => setLoadingReadings(false));
   }, [activeUnit?.id, activeSub.slug, activeRange.type, activeRange.days, activeRange.start, activeRange.end]);
 
-  const tableRows = activeSub.parameters
+  const tableRows = visibleParams
     .flatMap((param) => {
       const readings = readingsByParam[param.id] || [];
       const kop = activeUnit.kop?.[param.id];
@@ -144,7 +149,7 @@ function GroupSection({ kategoriSlug, kategoriLabel, group, activeRange }) {
         <div className="flex items-center gap-2">
           <h2 className="text-lg font-semibold text-[#1B2559]">{subLabel(activeSub)}</h2>
           <span className="text-xs bg-slate-100 text-[#8292AA] px-2 py-0.5 rounded-full">
-            {activeSub.parameters.length} Parameter
+            {visibleParams.length} Parameter
           </span>
         </div>
 
@@ -190,10 +195,10 @@ function GroupSection({ kategoriSlug, kategoriLabel, group, activeRange }) {
       ) : (
         <>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {activeSub.parameters.map((param, idx) => {
+            {visibleParams.map((param, idx) => {
               const isLastOdd =
-                activeSub.parameters.length % 2 === 1 &&
-                idx === activeSub.parameters.length - 1;
+                visibleParams.length % 2 === 1 &&
+                idx === visibleParams.length - 1;
 
               return (
                 <div key={param.id} className={isLastOdd ? 'lg:col-span-2' : ''}>

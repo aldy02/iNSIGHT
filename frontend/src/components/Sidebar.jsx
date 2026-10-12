@@ -33,7 +33,16 @@ const PLANTS = [
       { label: 'Steam', slug: 'steam' }
     ]
   },
-  { kode: 'P3', label: 'Pabrik 3' },
+  {
+    kode: 'P3', label: 'Pabrik 3',
+    subMenu: [
+      { label: 'Desalination', slug: 'desalination' },
+      { label: 'Demineralization', slug: 'demineralization' },
+      { label: 'Boiler Feed Water', slug: 'boiler-feed-water' },
+      { label: 'Boiler Water', slug: 'boiler-water' },
+      { label: 'Steam', slug: 'steam' }
+    ]
+  },
   {
     kode: 'P4',
     label: 'Pabrik 4',
@@ -45,7 +54,16 @@ const PLANTS = [
       { label: 'Steam', slug: 'steam' }
     ]
   },
-  { kode: 'P5', label: 'Pabrik 5' },
+  {
+    kode: 'P5', label: 'Pabrik 5',
+    subMenu: [
+      { label: 'Desalination', slug: 'desalination' },
+      { label: 'Demineralization', slug: 'demineralization' },
+      { label: 'Boiler Feed Water', slug: 'boiler-feed-water' },
+      { label: 'Boiler Water', slug: 'boiler-water' },
+      { label: 'Steam', slug: 'steam' }
+    ]
+  },
   {
     kode: 'P6',
     label: 'Pabrik 6',

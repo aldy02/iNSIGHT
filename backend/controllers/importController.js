@@ -100,6 +100,32 @@ const PLANT_ALIAS = {
         'utility|demineralization|mixedbed c|-': 'ammonia|demineralization|mixedbed c|-',
         'utility|demineralization|mixedbed d|-': 'ammonia|demineralization|mixedbed d|-',
     },
+    P3: {
+        'utility|desalination|raw condensate tank|-': 'ammonia|desalination|raw condensate tank|-',
+        'utility|demineralization|mixedbed a|-': 'ammonia|demineralization|mixedbed a|-',
+        'utility|demineralization|mixedbed b|-': 'ammonia|demineralization|mixedbed b|-',
+        'utility|demineralization|mixedbed c|-': 'ammonia|demineralization|mixedbed c|-',
+        'utility|demineralization|demin tank|-': 'ammonia|demineralization|demin tank|-',
+        'utility|boiler feed water|utility|-': 'ammonia|boiler feed water|utility|-',
+        'utility|boiler water|whb water|-': 'ammonia|boiler water|whb water|-',
+        'utility|steam|whb steam|-': 'ammonia|steam|whb steam|-',
+    },
+
+    P4: {
+        // Lingkungan -> BFW (DO)
+        'lingkungan|boiler feed water|ammonia|-': 'ammonia|boiler feed water|ammonia|-',
+        'lingkungan|boiler feed water|utility|-': 'ammonia|boiler feed water|utility|-',
+        // Utility -> Ammonia
+        'utility|desalination|raw condensate tank|-': 'ammonia|desalination|raw condensate tank|-',
+        'utility|boiler feed water|utility|-': 'ammonia|boiler feed water|utility|-',
+        'utility|demineralization|mixedbed a|-': 'ammonia|demineralization|mixedbed a|-',
+        'utility|demineralization|mixedbed b|-': 'ammonia|demineralization|mixedbed b|-',
+        'utility|demineralization|demin tank|-': 'ammonia|demineralization|demin tank|-',
+        'utility|boiler water|package boiler water|-': 'ammonia|boiler water|package boiler water|-',
+        'utility|boiler water|whb water|-': 'ammonia|boiler water|whb water|-',
+        'utility|steam|package boiler steam|-': 'ammonia|steam|package boiler steam|-',
+        'utility|steam|whb steam|-': 'ammonia|steam|whb steam|-',
+    },
 };
 
 // Proses sheet
