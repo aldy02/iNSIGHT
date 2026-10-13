@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-do
 import {
   Factory,
   UploadCloud,
+  SlidersHorizontal,
   LogOut,
   ChevronUp,
   ChevronDown,
@@ -82,8 +83,16 @@ const PLANTS = [
       { label: 'Steam', slug: 'steam' },
     ],
   },
-  { kode: 'P7', label: 'Pabrik 7' },
 ];
+
+// Judul section
+function SectionLabel({ children, className = '' }) {
+  return (
+    <p className={`px-4 pb-1 text-[11px] font-semibold uppercase tracking-wider text-[#A3AED0] ${className}`}>
+      {children}
+    </p>
+  );
+}
 
 export default function Sidebar({ isOpen, onClose }) {
   const location = useLocation();
@@ -158,6 +167,8 @@ export default function Sidebar({ isOpen, onClose }) {
           {/* Nav scroll */}
           <div className="flex-1 overflow-y-auto overflow-x-hidden">
             <nav className="flex flex-col px-4 py-5 gap-1">
+              <SectionLabel>Unit Pabrik</SectionLabel>
+
               {PLANTS.map((plant) => {
                 const hasSub = Boolean(plant.subMenu);
                 const plantActive = isPlantActive(plant.kode);
@@ -265,21 +276,39 @@ export default function Sidebar({ isOpen, onClose }) {
                 );
               })}
 
-              {/* Form Upload - admin only */}
+              {/* Konfigurasi - admin only */}
               {isAdmin && (
-                <Link
-                  to="/upload"
-                  onClick={onClose}
-                  className={`
-                    flex items-center gap-3.5 w-full px-4 py-3
-                    rounded-xl text-[14px] font-medium
-                    transition-colors duration-150
-                    ${isLeafActive('/upload') ? activeStyle : `${baseText} ${hoverStyle}`}
-                  `}
-                >
-                  <UploadCloud size={20} className="shrink-0" />
-                  <span>Form Upload</span>
-                </Link>
+                <>
+                  <SectionLabel className="mt-5">Konfigurasi</SectionLabel>
+
+                  <Link
+                    to="/upload"
+                    onClick={onClose}
+                    className={`
+                      flex items-center gap-3.5 w-full px-4 py-3
+                      rounded-xl text-[14px] font-medium
+                      transition-colors duration-150
+                      ${isLeafActive('/upload') ? activeStyle : `${baseText} ${hoverStyle}`}
+                    `}
+                  >
+                    <UploadCloud size={20} className="shrink-0" />
+                    <span>Form Upload</span>
+                  </Link>
+
+                  <Link
+                    to="/parameter"
+                    onClick={onClose}
+                    className={`
+                      flex items-center gap-3.5 w-full px-4 py-3
+                      rounded-xl text-[14px] font-medium
+                      transition-colors duration-150
+                      ${isLeafActive('/parameter') ? activeStyle : `${baseText} ${hoverStyle}`}
+                    `}
+                  >
+                    <SlidersHorizontal size={20} className="shrink-0" />
+                    <span>Add/Edit Parameter</span>
+                  </Link>
+                </>
               )}
             </nav>
           </div>

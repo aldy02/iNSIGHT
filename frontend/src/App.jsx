@@ -8,6 +8,7 @@ import FormUpload from './pages/FormUpload';
 import LayoutWrapper from './components/LayoutWrapper';
 import ProtectedRoute from './components/ProtectedRoute';
 import NotFound from './pages/NotFound';
+import AddParameter from './pages/AddParameter';
 
 function App() {
   return (
@@ -26,6 +27,7 @@ function App() {
             {/* Admin Only */}
             <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
               <Route path="/upload" element={<FormUpload />} />
+              <Route path="/parameter" element={<AddParameter />} />
             </Route>
           </Route>
         </Route>

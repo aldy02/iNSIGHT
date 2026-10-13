@@ -5,13 +5,21 @@ const authMiddleware = require('../middleware/authMiddleware');
 const roleMiddleware = require('../middleware/roleMiddleware');
 const importController = require('../controllers/importController');
 
-// Admin Only: Cuma admin yang bisa upload
+// Admin Only: daftar sumber file milik satu pabrik (untuk dropdown form upload)
+router.get(
+  '/sources',
+  authMiddleware,
+  roleMiddleware('admin'),
+  importController.listSources
+);
+
+// Admin Only: upload satu file ke satu sumber
 router.post(
-  '/master',
+  '/source',
   authMiddleware,
   roleMiddleware('admin'),
   upload.single('file'),
-  importController.uploadMasterExcel
+  importController.uploadSourceExcel
 );
 
 module.exports = router;

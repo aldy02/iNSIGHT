@@ -9,6 +9,8 @@ const Unit = require('./unit');
 const Parameter = require('./parameter');
 const KopParameter = require('./kopParameter');
 const DailyReading = require('./dailyReading');
+const DataSource = require('./dataSource');
+const SourceColumn = require('./sourceColumn');
 
 Plant.hasMany(Area, { foreignKey: 'plant_id', onDelete: 'CASCADE' });
 Area.belongsTo(Plant, { foreignKey: 'plant_id' });
@@ -37,6 +39,19 @@ DailyReading.belongsTo(Parameter, { foreignKey: 'parameter_id' });
 User.hasMany(DailyReading, { foreignKey: 'input_by', onDelete: 'SET NULL' });
 DailyReading.belongsTo(User, { foreignKey: 'input_by', as: 'inputByUser' });
 
+// Mapping sumber file
+Plant.hasMany(DataSource, { foreignKey: 'plant_id', onDelete: 'CASCADE' });
+DataSource.belongsTo(Plant, { foreignKey: 'plant_id' });
+
+DataSource.hasMany(SourceColumn, { foreignKey: 'data_source_id', as: 'columns', onDelete: 'CASCADE' });
+SourceColumn.belongsTo(DataSource, { foreignKey: 'data_source_id' });
+
+Unit.hasMany(SourceColumn, { foreignKey: 'unit_id', onDelete: 'CASCADE' });
+SourceColumn.belongsTo(Unit, { foreignKey: 'unit_id' });
+
+Parameter.hasMany(SourceColumn, { foreignKey: 'parameter_id', onDelete: 'CASCADE' });
+SourceColumn.belongsTo(Parameter, { foreignKey: 'parameter_id' });
+
 module.exports = {
   sequelize,
   User,
@@ -48,4 +63,6 @@ module.exports = {
   Parameter,
   KopParameter,
   DailyReading,
+  DataSource,
+  SourceColumn,
 };

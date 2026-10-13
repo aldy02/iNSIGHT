@@ -13,6 +13,9 @@ export default function FormUpload() {
 
   const [plants, setPlants] = useState([]);
   const [plantId, setPlantId] = useState('');
+  const [sources, setSources] = useState([]);
+  const [sourceId, setSourceId] = useState('');
+  const [loadingSources, setLoadingSources] = useState(false);
   const [file, setFile] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -20,6 +23,7 @@ export default function FormUpload() {
   const [result, setResult] = useState(null);
   const inputRef = useRef(null);
 
+  // Daftar pabrik
   useEffect(() => {
     const fetchPlants = async () => {
       try {
@@ -31,6 +35,31 @@ export default function FormUpload() {
     };
     fetchPlants();
   }, []);
+
+  // Daftar sumber file (area) milik pabrik yang dipilih
+  useEffect(() => {
+    setSourceId('');
+    setSources([]);
+    if (!plantId) return;
+
+    let cancelled = false;
+    const fetchSources = async () => {
+      setLoadingSources(true);
+      try {
+        const res = await api.get('/import/sources', { params: { plantId } });
+        if (!cancelled) setSources(Array.isArray(res.data) ? res.data : res.data?.data ?? []);
+      } catch (err) {
+        console.error('Gagal mengambil daftar sumber:', err);
+        if (!cancelled) setError(err.response?.data?.message || 'Gagal mengambil daftar sumber file');
+      } finally {
+        if (!cancelled) setLoadingSources(false);
+      }
+    };
+    fetchSources();
+    return () => { cancelled = true; };
+  }, [plantId]);
+
+  const selectedSource = sources.find((s) => String(s.id) === String(sourceId));
 
   const validateFile = (f) => {
     if (!f) return 'File tidak ditemukan';
@@ -71,13 +100,29 @@ export default function FormUpload() {
     if (inputRef.current) inputRef.current.value = '';
   };
 
+  const handlePlantChange = (e) => {
+    setPlantId(e.target.value);
+    setError('');
+    setResult(null);
+  };
+
+  const handleSourceChange = (e) => {
+    setSourceId(e.target.value);
+    setError('');
+    setResult(null);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setResult(null);
 
     if (!plantId) {
-      setError('Pilih pabrik terlebih dahulu (atau "Semua Pabrik")');
+      setError('Pilih pabrik terlebih dahulu');
+      return;
+    }
+    if (!sourceId) {
+      setError('Pilih sumber file (area) terlebih dahulu');
       return;
     }
     if (!file) {
@@ -85,13 +130,26 @@ export default function FormUpload() {
       return;
     }
 
+    // Prevention: nama file harus match nama area (ex: P2-Utility.xlsx untuk Utility).
+    const norm = (str) => String(str).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    const fileNorm = norm(file.name.replace(/\.[^.]+$/, ''));
+    const tokens = norm(selectedSource?.nama || '').split(' ').filter(Boolean);
+    if (tokens.length && !tokens.every((t) => fileNorm.includes(t))) {
+      setError(
+        `Nama file "${file.name}" tidak mengandung "${selectedSource.nama}". ` +
+        `Upload dibatalkan karena kemungkinan salah file atau salah area.`
+      );
+      return;
+    }
+
     const formData = new FormData();
     formData.append('file', file);
     formData.append('plantId', plantId);
+    formData.append('dataSourceId', sourceId);
 
     setUploading(true);
     try {
-      const res = await api.post('/import/master', formData, {
+      const res = await api.post('/import/source', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       setResult({ status: 'success', data: res.data });
@@ -104,14 +162,17 @@ export default function FormUpload() {
     }
   };
 
-  const isAllMode = String(plantId).toLowerCase() === 'all';
+  const selectClass = (hasValue, disabled) =>
+    `w-full appearance-none pl-4 pr-10 py-2.5 border border-slate-200 rounded-lg text-sm outline-none focus:border-[#003399] bg-white transition-colors ${
+      disabled ? 'cursor-not-allowed bg-slate-50' : 'cursor-pointer'
+    } ${hasValue ? 'text-[#1B2559]' : 'text-[#8292AA]'}`;
 
   return (
     <div className="w-full">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-[#1B2559]">Upload Master Data Excel</h1>
+        <h1 className="text-2xl font-bold text-[#1B2559]">Upload Data Excel</h1>
         <p className="text-sm text-[#505F76] mt-1">
-          Upload file Excel berisi data harian untuk diproses ke dalam sistem.
+          Pilih pabrik dan area, lalu upload file Excel aslinya. Data dibaca berdasarkan kolom yang sudah terdaftar.
         </p>
       </div>
 
@@ -128,19 +189,10 @@ export default function FormUpload() {
       >
         {/* Pilih Pabrik */}
         <div>
-          <label className="block text-sm font-medium text-[#1B2559] mb-2">
-            Pilih Pabrik
-          </label>
+          <label className="block text-sm font-medium text-[#1B2559] mb-2">Pilih Pabrik</label>
           <div className="relative group">
-            <select
-              value={plantId}
-              onChange={(e) => setPlantId(e.target.value)}
-              className={`w-full appearance-none pl-4 pr-10 py-2.5 border border-slate-200 rounded-lg text-sm outline-none focus:border-[#003399] bg-white transition-colors cursor-pointer ${
-                plantId ? 'text-[#1B2559]' : 'text-[#8292AA]'
-              }`}
-            >
+            <select value={plantId} onChange={handlePlantChange} className={selectClass(plantId, false)}>
               <option value="">-- Pilih Pabrik --</option>
-              <option value="all" className='text-[#1B2559]'>Semua Pabrik</option>
               {plants.map((p) => (
                 <option key={p.id} value={p.id} className="text-[#1B2559]">
                   {p.nama} ({p.kode})
@@ -152,19 +204,55 @@ export default function FormUpload() {
               className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8292AA] pointer-events-none transition-transform duration-200 group-focus-within:rotate-180"
             />
           </div>
-          {isAllMode && (
+        </div>
+
+        {/* Pilih Sumber File / Area */}
+        <div>
+          <label className="block text-sm font-medium text-[#1B2559] mb-2">Pilih Area (Sumber File)</label>
+          <div className="relative group">
+            <select
+              value={sourceId}
+              onChange={handleSourceChange}
+              disabled={!plantId || loadingSources}
+              className={selectClass(sourceId, !plantId || loadingSources)}
+            >
+              <option value="">
+                {!plantId ? '-- Pilih pabrik dulu --' : loadingSources ? 'Memuat...' : '-- Pilih Area --'}
+              </option>
+              {sources.map((s) => (
+                <option key={s.id} value={s.id} className="text-[#1B2559]">
+                  {s.nama}
+                </option>
+              ))}
+            </select>
+            {loadingSources ? (
+              <Loader2 size={18} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8292AA] animate-spin pointer-events-none" />
+            ) : (
+              <ChevronDown
+                size={18}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8292AA] pointer-events-none transition-transform duration-200 group-focus-within:rotate-180"
+              />
+            )}
+          </div>
+
+          {plantId && !loadingSources && sources.length === 0 && (
             <p className="text-xs text-amber-600 mt-2 flex items-start gap-1.5">
               <AlertTriangle size={14} className="mt-0.5 shrink-0" />
-              Mode "Semua Pabrik": setiap sheet di Excel akan dicocokkan otomatis dengan kode pabrik.
+              Pabrik ini belum punya sumber file terdaftar.
+            </p>
+          )}
+          {selectedSource && (
+            <p className="text-xs text-[#8292AA] mt-2">
+              Sheet: <b className="text-[#1B2559]">{selectedSource.sheet_name || 'pertama'}</b>
+              {' · '}Tanggal di kolom <b className="text-[#1B2559]">{selectedSource.date_column}</b>
+              {' · '}Data mulai baris <b className="text-[#1B2559]">{selectedSource.data_start_row}</b>
             </p>
           )}
         </div>
 
         {/* Dropzone */}
         <div>
-          <label className="block text-sm font-medium text-[#1B2559] mb-2">
-            File Excel
-          </label>
+          <label className="block text-sm font-medium text-[#1B2559] mb-2">File Excel</label>
 
           {!file ? (
             <div
@@ -241,37 +329,22 @@ export default function FormUpload() {
         </button>
       </form>
 
-      {/* HMessage Hasil Import Sukses */}
+      {/* Hasil Import */}
       {result && result.status === 'success' && (
         <div className="mt-6 bg-white rounded-2xl p-8 shadow-sm">
-          <ResultSummary result={result} />
+          <ResultSummary data={result.data} />
         </div>
       )}
     </div>
   );
 }
 
-function ResultSummary({ result }) {
-  const { status, data } = result;
-
-  if (status === 'error') {
-    return (
-      <div>
-        <div className="flex items-center gap-2 text-red-600 mb-2">
-          <XCircle size={20} />
-          <h3 className="font-semibold text-[#1B2559]">Import Gagal</h3>
-        </div>
-        <p className="text-sm text-[#8292AA]">{data?.message || 'Terjadi kesalahan saat memproses file.'}</p>
-        {data?.sheetTersedia && (
-          <p className="text-xs text-[#8292AA] mt-2">
-            Sheet tersedia di file: {data.sheetTersedia.join(', ')}
-          </p>
-        )}
-      </div>
-    );
-  }
-
-  const isAllMode = Array.isArray(data?.results);
+function ResultSummary({ data }) {
+  const skipped = data?.skippedColumns || [];
+  const unmapped = data?.unmappedColumns || [];
+  const parseErrors = data?.parseErrors || [];
+  const errorCells = data?.errorCells || 0;
+  const noData = (data?.totalRowsValid ?? 0) === 0;
 
   return (
     <div>
@@ -280,60 +353,87 @@ function ResultSummary({ result }) {
         <h3 className="font-semibold text-[#1B2559]">{data?.message || 'Import Selesai'}</h3>
       </div>
 
-      {isAllMode ? (
-        <div className="space-y-3">
-          {data.skippedSheets?.length > 0 && (
-            <p className="text-xs text-amber-600 bg-amber-50 border border-amber-100 rounded-xl px-4 py-2.5">
-              Sheet diabaikan (tidak cocok kode pabrik): {data.skippedSheets.join(', ')}
-            </p>
-          )}
-          {data.results.map((r, idx) => (
-            <SheetResultRow key={idx} r={r} />
-          ))}
+      <div className="rounded-xl px-4 py-3.5 text-sm border border-slate-100 bg-slate-50">
+        <div className="flex justify-between items-center">
+          <span className="font-medium text-[#1B2559]">
+            {data.plant} — {data.source}
+            {data.sheet ? ` (sheet: ${data.sheet})` : ''}
+          </span>
+          <span className="text-xs font-medium text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-full">Sukses</span>
         </div>
-      ) : (
-        <SheetResultRow r={data} />
-      )}
+        <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs text-[#8292AA]">
+          <span>Data terbaca: <b className="text-[#1B2559]">{data.totalRowsValid}</b></span>
+          <span>Dibuat: <b className="text-[#1B2559]">{data.created}</b></span>
+          <span>Diupdate: <b className="text-[#1B2559]">{data.updated}</b></span>
+          <span className={data.failed > 0 ? 'text-red-600 font-medium' : ''}>Gagal: <b>{data.failed}</b></span>
+        </div>
+      </div>
+
+      <div className="mt-4 space-y-3">
+        {noData && (
+          <Notice tone="red">
+            Tidak ada data yang terbaca. Pastikan file yang diupload sesuai dengan area yang dipilih.
+          </Notice>
+        )}
+
+        {skipped.length > 0 && (
+          <Notice tone="amber">
+            <b>{skipped.length} kolom dilewati</b> karena judulnya tidak cocok (kemungkinan kolom bergeser).
+            <ul className="mt-1.5 space-y-1">
+              {skipped.map((s, i) => (
+                <li key={i} className="text-xs">
+                  Kolom {s.column}: seharusnya "{s.expected}", ditemukan "{(s.found || []).join(' / ') || 'kosong'}"
+                </li>
+              ))}
+            </ul>
+          </Notice>
+        )}
+
+        {unmapped.length > 0 && (
+          <details className="text-xs text-[#8292AA]">
+            <summary className="cursor-pointer text-[#003399] font-medium">
+              {unmapped.length} kolom lain di file berisi data tapi tidak terdaftar (tidak diimpor)
+            </summary>
+            <p className="mt-1.5 leading-relaxed">
+              Kolom: {unmapped.join(', ')}
+            </p>
+          </details>
+        )}
+
+        {errorCells > 0 && (
+          <Notice tone="amber">
+            {errorCells} sel berisi error (#N/A, #REF!, dll.) dan dilewati.
+          </Notice>
+        )}
+
+        {parseErrors.length > 0 && (
+          <details>
+            <summary className="text-xs text-[#003399] font-medium cursor-pointer">
+              Lihat detail error ({parseErrors.length})
+            </summary>
+            <ul className="mt-1.5 space-y-1 max-h-40 overflow-y-auto">
+              {parseErrors.map((e, i) => (
+                <li key={i} className="text-xs text-[#8292AA] border-b border-slate-100 pb-1">
+                  Baris Excel {e.excelRow}: {e.reason}
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+      </div>
     </div>
   );
 }
 
-function SheetResultRow({ r }) {
-  const isError = r.status === 'error';
+function Notice({ tone, children }) {
+  const styles =
+    tone === 'red'
+      ? 'text-red-600 bg-red-50 border-red-100'
+      : 'text-amber-700 bg-amber-50 border-amber-100';
   return (
-    <div className={`rounded-xl px-4 py-3.5 text-sm border ${isError ? 'border-red-100 bg-red-50' : 'border-slate-100 bg-slate-50'}`}>
-      <div className="flex justify-between items-center">
-        <span className="font-medium text-[#1B2559]">{r.plant} {r.sheet ? `(sheet: ${r.sheet})` : ''}</span>
-        {isError ? (
-          <span className="text-xs font-medium text-red-600 bg-red-100 px-2 py-0.5 rounded-full">Error</span>
-        ) : (
-          <span className="text-xs font-medium text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-full">Sukses</span>
-        )}
-      </div>
-      {isError ? (
-        <p className="text-red-600 text-xs mt-1.5">{r.error}</p>
-      ) : (
-        <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs text-[#8292AA]">
-          <span>Baris valid: <b className="text-[#1B2559]">{r.totalRowsValid}</b></span>
-          <span>Dibuat: <b className="text-[#1B2559]">{r.created}</b></span>
-          <span>Diupdate: <b className="text-[#1B2559]">{r.updated}</b></span>
-          <span className={r.failed > 0 ? 'text-red-600 font-medium' : ''}>Gagal: <b>{r.failed}</b></span>
-        </div>
-      )}
-      {(r.parseErrors?.length > 0 || r.lookupErrors?.length > 0) && (
-        <details className="mt-2.5">
-          <summary className="text-xs text-[#003399] font-medium cursor-pointer">
-            Lihat detail error ({(r.parseErrors?.length || 0) + (r.lookupErrors?.length || 0)})
-          </summary>
-          <ul className="mt-1.5 space-y-1 max-h-40 overflow-y-auto">
-            {[...(r.parseErrors || []), ...(r.lookupErrors || [])].map((e, i) => (
-              <li key={i} className="text-xs text-[#8292AA] border-b border-slate-100 pb-1">
-                Baris Excel {e.excelRow}: {e.reason}
-              </li>
-            ))}
-          </ul>
-        </details>
-      )}
+    <div className={`flex items-start gap-2 text-sm border rounded-xl px-4 py-2.5 ${styles}`}>
+      <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+      <div className="text-xs leading-relaxed">{children}</div>
     </div>
   );
 }

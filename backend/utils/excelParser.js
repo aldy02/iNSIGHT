@@ -22,22 +22,21 @@ function isValidDate(y, m, d) {
 function parseTanggal(value) {
   if (value === null || value === undefined || value === '') return null;
 
-  // Angka serial Excel
   if (typeof value === 'number') {
     const parsed = XLSX.SSF.parse_date_code(value);
     if (!parsed) return null;
     return `${parsed.y}-${pad2(parsed.m)}-${pad2(parsed.d)}`;
   }
 
-  // Objek Date (jika cellDates: true)
+  // Jika cellDates: true)
   if (value instanceof Date && !isNaN(value)) {
     return `${value.getFullYear()}-${pad2(value.getMonth() + 1)}-${pad2(value.getDate())}`;
   }
 
-  // Teks: buang spasi dan tanda kutip/apostrof di awal-akhir
+  // Buang spasi dan tanda kutip di awal-akhir
   const str = String(value).trim().replace(/^['"‘’“”]+|['"‘’“”]+$/g, '');
 
-  // Format ISO: 2026-04-16 (juga 2026/04/16 atau 2026-04-16T00:00:00)
+  // Format baru: 2026-04-16 atau 2026/04/16 atau 2026-04-16T00:00:00
   let match = str.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:[T\s].*)?$/);
   if (match) {
     const y = Number(match[1]), m = Number(match[2]), d = Number(match[3]);
@@ -67,7 +66,7 @@ function findMergeRange(merges, row, col) {
   return null;
 }
 
-// Ambil nilai sel; jika sel bagian dari merge, ambil dari sel kiri-atas merge
+// Ambil nilai sel; kalau sel bagian dari merge, ambil dari sel kiri-atas merge
 function getCellValue(ws, merges, row, col) {
   const range = findMergeRange(merges, row, col);
   const r = range ? range.s.r : row;
@@ -76,103 +75,133 @@ function getCellValue(ws, merges, row, col) {
   return cell ? cell.v : undefined;
 }
 
-// Parse sheet format horizontal (banyak blok Tanggal)
-// Header 5 level: Area > Kategori Utama > Sub Kategori > Unit > Parameter
-function parseSheet(workbook, sheetName) {
+// Kumpulkan semua teks header (baris 1 .. data_start_row-1) untuk satu kolom
+function collectHeaderTexts(ws, merges, colIdx, dataStartIdx) {
+  const texts = [];
+  for (let r = 0; r < dataStartIdx; r++) {
+    const t = normalize(getCellValue(ws, merges, r, colIdx));
+    if (t !== '' && !texts.includes(t)) texts.push(t);
+  }
+  return texts;
+}
+
+function getUsedRange(ws) {
+  let minR = Infinity, minC = Infinity, maxR = -1, maxC = -1;
+  for (const key of Object.keys(ws)) {
+    if (key[0] === '!') continue;
+    const { r, c } = XLSX.utils.decode_cell(key);
+    if (r < minR) minR = r;
+    if (c < minC) minC = c;
+    if (r > maxR) maxR = r;
+    if (c > maxC) maxC = c;
+  }
+  return maxR < 0 ? null : { s: { r: minR, c: minC }, e: { r: maxR, c: maxC } };
+}
+
+/**
+ * @param workbook  hasil readWorkbook()
+ * @param source    DataSource (sheet_name, date_column, data_start_row)
+ * @param columns   array SourceColumn (column_letter, unit_id, parameter_id, header_hint)
+ */
+
+function parseSourceSheet(workbook, source, columns) {
+  // Pilih sheet: nama tetap kalau diisi, kalau NULL pakai sheet pertama
+  let sheetName;
+  if (source.sheet_name) {
+    sheetName = workbook.SheetNames.find(
+      (n) => normalize(n).toLowerCase() === normalize(source.sheet_name).toLowerCase()
+    );
+    if (!sheetName) {
+      const err = new Error(`Sheet "${source.sheet_name}" tidak ditemukan di file`);
+      err.sheetTersedia = workbook.SheetNames;
+      throw err;
+    }
+  } else {
+    sheetName = workbook.SheetNames[0];
+  }
+
   const ws = workbook.Sheets[sheetName];
-  if (!ws) throw new Error(`Sheet "${sheetName}" tidak ditemukan di file`);
+  const range = ws ? getUsedRange(ws) : null;
+  if (!range) throw new Error(`Sheet "${sheetName}" kosong`);
 
   const merges = ws['!merges'] || [];
-  const range = XLSX.utils.decode_range(ws['!ref']);
+  const dataStartIdx = source.data_start_row - 1;
+  const dateColIdx = XLSX.utils.decode_col(source.date_column);
 
-  // Cari semua kolom "Tanggal" beserta baris headernya
-  const tanggalBlocks = [];
-  for (let r = range.s.r; r <= range.e.r; r++) {
-    for (let c = range.s.c; c <= range.e.c; c++) {
-      const cell = ws[XLSX.utils.encode_cell({ r, c })];
-      if (cell && normalize(cell.v).toLowerCase() === 'tanggal') {
-        const merge = findMergeRange(merges, r, c);
-        tanggalBlocks.push({
-          col: c,
-          headerStartRow: merge ? merge.s.r : r,
-          headerEndRow: merge ? merge.e.r : r,
-        });
-      }
-    }
-  }
-
-  if (tanggalBlocks.length === 0) {
-    throw new Error(`Kolom "Tanggal" tidak ditemukan di sheet "${sheetName}"`);
-  }
-
-  tanggalBlocks.sort((a, b) => a.col - b.col);
-
-  const rows = [];
   const parseErrors = [];
+  const skippedColumns = [];
+  const activeColumns = [];
 
-  tanggalBlocks.forEach((block, idx) => {
-    const nextBlockCol = idx + 1 < tanggalBlocks.length ? tanggalBlocks[idx + 1].col : range.e.c + 1;
-    const dataColStart = block.col + 1;
-    const dataColEnd = nextBlockCol - 1;
-    const { headerStartRow, headerEndRow } = block;
-    const dataStartRow = headerEndRow + 1;
-    const headerRowCount = headerEndRow - headerStartRow + 1;
-
-    // Harus 5 level header
-    if (headerRowCount !== 5) {
-      parseErrors.push({
-        excelRow: headerStartRow + 1,
-        reason: `Blok Tanggal di kolom ${XLSX.utils.encode_col(block.col)} punya ${headerRowCount} baris header, seharusnya 5 (Area/Kategori Utama/Sub Kategori/Unit/Parameter). Blok ini dilewati.`,
-      });
-      return;
-    }
-
-    // Susun path header per kolom
-    const columnPaths = {};
-    for (let c = dataColStart; c <= dataColEnd; c++) {
-      const levels = [];
-      for (let r = headerStartRow; r <= headerEndRow; r++) {
-        levels.push(normalize(getCellValue(ws, merges, r, c)));
+  for (const col of columns) {
+    const colIdx = XLSX.utils.decode_col(col.column_letter);
+    if (col.header_hint) {
+      const headers = collectHeaderTexts(ws, merges, colIdx, dataStartIdx);
+      // header_hint boleh berisi beberapa kata kunci dipisah "|", semuanya harus ditemukan,
+      const tokens = String(col.header_hint)
+        .split('|')
+        .map((t) => normalize(t).toLowerCase())
+        .filter(Boolean);
+      const match = tokens.every((tok) => headers.some((h) => h.toLowerCase().includes(tok)));
+      if (!match) {
+        skippedColumns.push({
+          column: col.column_letter,
+          expected: col.header_hint,
+          found: headers,
+          reason: `Header kolom ${col.column_letter} tidak cocok dengan "${col.header_hint}". Kolom dilewati (salah file atau kolom bergeser).`,
+        });
+        continue;
       }
-      columnPaths[c] = levels; // [area, kategoriUtama, subKategori, unit, parameter]
     }
+    activeColumns.push({ ...col.toJSON?.() ?? col, colIdx });
+  }
 
-    // Baca data tiap baris setelah header
-    for (let r = dataStartRow; r <= range.e.r; r++) {
-      const tanggalRaw = getCellValue(ws, merges, r, block.col);
-      const tanggal = parseTanggal(tanggalRaw);
+  const mappedIdx = new Set(columns.map((c) => XLSX.utils.decode_col(c.column_letter)));
+  const unmapped = new Set();
+  const rows = [];
+  let errorCells = 0;
 
-      if (!tanggal) {
-        // Sel kosong dilewati diam-diam, tanggal salah format dilaporkan
-        if (tanggalRaw !== undefined && String(tanggalRaw).trim() !== '') {
-          parseErrors.push({
-            excelRow: r + 1,
-            reason: `Format tanggal tidak dikenali: "${tanggalRaw}"`,
-          });
-        }
+  for (let r = dataStartIdx; r <= range.e.r; r++) {
+    const dateCell = ws[XLSX.utils.encode_cell({ r, c: dateColIdx })];
+    const tanggal = dateCell ? parseTanggal(dateCell.v) : null;
+
+    // Skip baris tanpa tanggal valid
+    if (!tanggal) continue;
+
+    for (const col of activeColumns) {
+      const cell = ws[XLSX.utils.encode_cell({ r, c: col.colIdx })];
+
+      if (cell && cell.t === 'e') {
+        errorCells++; // #N/A, #REF!, #DIV/0!, ...
         continue;
       }
 
-      for (let c = dataColStart; c <= dataColEnd; c++) {
-        const rawVal = getCellValue(ws, merges, r, c);
-        const nilaiText = normalize(rawVal);
-        if (nilaiText === '') continue; // sel kosong dilewati
+      // Sel tidak ada atau isinya kosong diubah jadi 0
+      let nilai = cell ? normalize(cell.v) : '';
+      if (nilai === '') nilai = '0';
 
-        const [area, kategoriUtama, subKategori, unit, parameter] = columnPaths[c];
-        if (!area || !kategoriUtama || !subKategori || !unit || !parameter) {
-          parseErrors.push({
-            excelRow: r + 1,
-            reason: `Kolom ${XLSX.utils.encode_col(c)} ada level header yang kosong (Area/Kategori/Sub/Unit/Parameter)`,
-          });
-          continue;
-        }
-
-        rows.push({ excelRow: r + 1, tanggal, area, kategoriUtama, subKategori, unit, parameter, nilai: nilaiText });
-      }
+      rows.push({
+        excelRow: r + 1,
+        tanggal,
+        unitId: col.unit_id,
+        parameterId: col.parameter_id,
+        nilai,
+        column: col.column_letter,
+      });
     }
-  });
 
-  return { rows, parseErrors };
+    // Deteksi kolom berisi data yang belum dipetakan
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      if (c === dateColIdx || mappedIdx.has(c) || unmapped.has(c)) continue;
+      const cell = ws[XLSX.utils.encode_cell({ r, c })];
+      if (cell && cell.t !== 'e' && normalize(cell.v) !== '') unmapped.add(c);
+    }
+  }
+
+  const unmappedColumns = [...unmapped]
+    .sort((a, b) => a - b)
+    .map((c) => XLSX.utils.encode_col(c));
+
+  return { sheetName, rows, parseErrors, skippedColumns, unmappedColumns, errorCells };
 }
 
-module.exports = { readWorkbook, parseSheet, normalize, parseTanggal };
+module.exports = { readWorkbook, parseSourceSheet, collectHeaderTexts, getUsedRange, normalize, parseTanggal };
