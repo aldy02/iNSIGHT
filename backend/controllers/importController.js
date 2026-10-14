@@ -41,15 +41,57 @@ async function saveReading({ tanggal, unitId, parameterId, nilaiText, userId }, 
     return 'created';
 }
 
-// Prevention: nama file harus mengandung nama sumber (ex: "Utility" untuk P2-Utility.xlsx).
-// Untuk nama dalam kurung, ex: "Lingkungan (Ammonia)", semua kata harus ada di nama file.
-function fileNameMatchesSource(fileName, sourceNama) {
-    const norm = (str) => String(str).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-    const name = norm(String(fileName).replace(/\.[^.]+$/, ''));
-    const tokens = norm(sourceNama).split(' ').filter(Boolean);
-    return tokens.every((t) => name.includes(t));
+// Checking files name
+const norm = (str) => String(str).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+const stripExt = (name) => String(name).replace(/\.[^.]+$/, '');
+const sourceTokens = (nama) => norm(nama).split(' ').filter(Boolean);
+
+// File name must be contain choosen plant
+function fileMentionsPlant(fileName, plant) {
+    const padded = ` ${norm(stripExt(fileName))} `;
+    return [plant.nama, plant.kode].filter(Boolean).some((a) => padded.includes(` ${norm(a)} `));
 }
 
+// All words must be in files name
+function fileMatchesSource(fileName, sourceNama) {
+    const name = norm(stripExt(fileName));
+    return sourceTokens(sourceNama).every((t) => name.includes(t));
+}
+
+// Error if not matched
+async function checkFileName(fileName, plant, source) {
+    if (!fileMentionsPlant(fileName, plant)) {
+        const others = (await Plant.findAll()).filter(
+            (p) => p.id !== plant.id && fileMentionsPlant(fileName, p)
+        );
+        return others.length
+            ? `File "${fileName}" tidak match dengan pabrik pabrik terpilih (${plant.nama}). Upload dibatalkan.`
+            : `Nama file "${fileName}" tidak menyebut ${plant.nama} (atau kode ${plant.kode}). Upload dibatalkan karena kemungkinan salah pabrik.`;
+    }
+
+    const siblings = await DataSource.findAll({
+        where: { plant_id: plant.id },
+        attributes: ['id', 'nama'],
+    });
+    const matches = siblings.filter((s) => fileMatchesSource(fileName, s.nama));
+
+    if (!fileMatchesSource(fileName, source.nama)) {
+        const hint = matches.length
+            ? ` File ini sepertinya untuk "${matches.map((s) => s.nama).join('" / "')}".`
+            : '';
+        return `Nama file "${fileName}" tidak mengandung "${source.nama}".${hint} Upload dibatalkan.`;
+    }
+
+    const mine = sourceTokens(source.nama).length;
+    const better = matches.find((s) => sourceTokens(s.nama).length > mine);
+    if (better) {
+        return `File "${fileName}" lebih cocok untuk sumber "${better.nama}", bukan "${source.nama}". Upload dibatalkan.`;
+    }
+
+    return null;
+}
+
+// Handlers
 // List sumber file untuk dropdown upload
 exports.listSources = async (req, res) => {
     try {
@@ -90,11 +132,9 @@ exports.uploadSourceExcel = async (req, res) => {
             return res.status(400).json({ message: `Sumber "${source.nama}" belum punya kolom terpetakan` });
         }
 
-        if (!fileNameMatchesSource(req.file.originalname, source.nama)) {
-            return res.status(400).json({
-                message: `Nama file "${req.file.originalname}" tidak mengandung "${source.nama}". Upload dibatalkan karena kemungkinan salah file atau salah area.`,
-            });
-        }
+        // Prevention: nama file harus cocok dengan pabrik dan sumber yang dipilih
+        const nameError = await checkFileName(req.file.originalname, plant, source);
+        if (nameError) return res.status(400).json({ message: nameError });
 
         let workbook;
         try {

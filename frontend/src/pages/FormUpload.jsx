@@ -36,7 +36,7 @@ export default function FormUpload() {
     fetchPlants();
   }, []);
 
-  // Daftar sumber file (area) milik pabrik yang dipilih
+  // Daftar file sumber milik pabrik yang dipilih
   useEffect(() => {
     setSourceId('');
     setSources([]);
@@ -122,7 +122,7 @@ export default function FormUpload() {
       return;
     }
     if (!sourceId) {
-      setError('Pilih sumber file (area) terlebih dahulu');
+      setError('Pilih file sumber terlebih dahulu');
       return;
     }
     if (!file) {
@@ -130,18 +130,7 @@ export default function FormUpload() {
       return;
     }
 
-    // Prevention: nama file harus match nama area (ex: P2-Utility.xlsx untuk Utility).
-    const norm = (str) => String(str).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-    const fileNorm = norm(file.name.replace(/\.[^.]+$/, ''));
-    const tokens = norm(selectedSource?.nama || '').split(' ').filter(Boolean);
-    if (tokens.length && !tokens.every((t) => fileNorm.includes(t))) {
-      setError(
-        `Nama file "${file.name}" tidak mengandung "${selectedSource.nama}". ` +
-        `Upload dibatalkan karena kemungkinan salah file atau salah area.`
-      );
-      return;
-    }
-
+    // Cek nama file match from backend
     const formData = new FormData();
     formData.append('file', file);
     formData.append('plantId', plantId);
@@ -172,7 +161,7 @@ export default function FormUpload() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-[#1B2559]">Upload Data Excel</h1>
         <p className="text-sm text-[#505F76] mt-1">
-          Pilih pabrik dan area, lalu upload file Excel aslinya. Data dibaca berdasarkan kolom yang sudah terdaftar.
+          Pilih pabrik dan file sumber, lalu upload file Excel aslinya. Data dibaca berdasarkan kolom yang sudah terdaftar.
         </p>
       </div>
 
@@ -206,9 +195,9 @@ export default function FormUpload() {
           </div>
         </div>
 
-        {/* Pilih Sumber File / Area */}
+        {/* Pilih File Sumber */}
         <div>
-          <label className="block text-sm font-medium text-[#1B2559] mb-2">Pilih Area (Sumber File)</label>
+          <label className="block text-sm font-medium text-[#1B2559] mb-2">Pilih File Sumber</label>
           <div className="relative group">
             <select
               value={sourceId}
@@ -217,7 +206,7 @@ export default function FormUpload() {
               className={selectClass(sourceId, !plantId || loadingSources)}
             >
               <option value="">
-                {!plantId ? '-- Pilih pabrik dulu --' : loadingSources ? 'Memuat...' : '-- Pilih Area --'}
+                {!plantId ? '-- Pilih pabrik dulu --' : loadingSources ? 'Memuat...' : '-- Pilih File --'}
               </option>
               {sources.map((s) => (
                 <option key={s.id} value={s.id} className="text-[#1B2559]">
@@ -372,7 +361,7 @@ function ResultSummary({ data }) {
       <div className="mt-4 space-y-3">
         {noData && (
           <Notice tone="red">
-            Tidak ada data yang terbaca. Pastikan file yang diupload sesuai dengan area yang dipilih.
+            Tidak ada data yang terbaca. Pastikan file yang diupload sesuai dengan file sumber yang dipilih.
           </Notice>
         )}
 
