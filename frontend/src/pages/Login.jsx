@@ -26,7 +26,7 @@ export default function Login() {
     try {
       setLoading(true);
       await login(form.email, form.password);
-      navigate('/pabrik/P1A');
+      navigate('/pabrik/P1A/desalination');
     } catch (err) {
       setError(err.response?.data?.message || 'Terjadi kesalahan, coba lagi');
     } finally {
