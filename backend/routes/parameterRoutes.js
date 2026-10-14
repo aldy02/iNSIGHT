@@ -7,10 +7,10 @@ const c = require('../controllers/parameterController');
 // Semua route di sini khusus admin
 router.use(authMiddleware, roleMiddleware('admin'));
 
-router.get('/meta', c.getMeta); // pilihan form: struktur menu, parameter, file sumber
-router.get('/', c.listParameters); // daftar parameter per pabrik
-router.post('/', c.createParameter); // add
-router.put('/:unitId/:parameterId', c.updateParameter); // edit
-router.delete('/:unitId/:parameterId', c.deleteParameter); // delete
+router.get('/meta', c.getMeta); // Pilihan form: struktur menu, parameter, file sumber
+router.get('/', c.listParameters); // Daftar parameter per pabrik
+router.post('/', c.createParameter); // Add
+router.put('/:unitId/:parameterId', c.updateParameter); // Edit
+router.delete('/:unitId/:parameterId', c.deleteParameter); // Delete
 
 module.exports = router;

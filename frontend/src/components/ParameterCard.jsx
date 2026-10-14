@@ -1,4 +1,5 @@
-import { CircleCheck, TrendingUp, TrendingDown, KeySquare, Inbox } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { CircleCheck, TrendingUp, TrendingDown, KeySquare, Inbox, RotateCcw } from 'lucide-react';
 import {
     ResponsiveContainer,
     AreaChart,
@@ -11,6 +12,11 @@ import {
     ReferenceDot,
 } from 'recharts';
 import { formatKop } from '../tests/data';
+
+const ZOOM_STEP = 0.8; // Everytime scroll, range y will zoom in 80% or zoom out 125%
+const MIN_SPAN_RATIO = 0.02; // Zoom max 2%
+const PLOT_TOP = 10;
+const PLOT_BOTTOM = 30;
 
 function StatBox({ icon, iconBg, iconColor, label, value, sub }) {
     return (
@@ -29,9 +35,93 @@ function StatBox({ icon, iconBg, iconColor, label, value, sub }) {
 
 export default function ParameterCard({ parameter, unit, readings, kop }) {
     const satuan = parameter.satuan ?? '';
+    const data = readings || [];
+    const n = data.length;
 
-    // Jika user pilih rentang waktu dan datanya kosong
-    if (!readings || readings.length === 0) {
+    // Zoom Y: null = display full
+    const [yRange, setYRange] = useState(null);
+    const [dragging, setDragging] = useState(false);
+    const chartRef = useRef(null);
+    const dragRef = useRef(null);
+
+    // When time range changes, zoom reset
+    useEffect(() => {
+        setYRange(null);
+    }, [readings]);
+
+    // Space 15% from highest point
+    const dataMax = n ? Math.max(...data.map((r) => r.nilai)) : 0;
+    const baseMax = Math.max(dataMax, kop?.max ?? -Infinity) * 1.15 || 1;
+    const curY = yRange ?? { min: 0, max: baseMax };
+
+    const clampY = (min, span) => {
+        const m = Math.max(0, Math.min(min, baseMax - span));
+        return { min: m, max: m + span };
+    };
+
+    // Zoom Y axis
+    const zoomY = (dir, frac = 0.5) => {
+        const span = curY.max - curY.min;
+        const newSpan = dir === 'in' ? span * ZOOM_STEP : span / ZOOM_STEP;
+        if (dir === 'in' && newSpan < baseMax * MIN_SPAN_RATIO) return;
+        if (newSpan >= baseMax) {
+            setYRange(null);
+            return;
+        }
+        const valueAtCursor = curY.max - frac * span;
+        const newMin = valueAtCursor - (1 - frac) * newSpan;
+        setYRange(clampY(newMin, newSpan));
+    };
+
+    // Ctrl/Cmd + scroll = zoom Y 
+    useEffect(() => {
+        const el = chartRef.current;
+        if (!el) return undefined;
+        const onWheel = (e) => {
+            if (!(e.ctrlKey || e.metaKey)) return;
+            e.preventDefault();
+            const rect = el.getBoundingClientRect();
+            const plotH = Math.max(1, rect.height - PLOT_TOP - PLOT_BOTTOM);
+            const frac = Math.min(1, Math.max(0, (e.clientY - rect.top - PLOT_TOP) / plotH));
+            zoomY(e.deltaY < 0 ? 'in' : 'out', frac);
+        };
+        el.addEventListener('wheel', onWheel, { passive: false });
+        return () => el.removeEventListener('wheel', onWheel);
+    });
+
+    // Move up or bottom chart area when zoom
+    const onPointerDown = (e) => {
+        if (!yRange || (e.pointerType === 'mouse' && e.button !== 0)) return;
+        dragRef.current = { startY: e.clientY, startMin: yRange.min, span: yRange.max - yRange.min };
+        setDragging(true);
+    };
+
+    useEffect(() => {
+        if (!dragging) return undefined;
+        const onMove = (e) => {
+            const d = dragRef.current;
+            const el = chartRef.current;
+            if (!d || !el) return;
+            const plotH = Math.max(1, el.clientHeight - PLOT_TOP - PLOT_BOTTOM);
+            const shift = ((e.clientY - d.startY) / plotH) * d.span;
+            setYRange(clampY(d.startMin + shift, d.span));
+        };
+        const onUp = () => {
+            dragRef.current = null;
+            setDragging(false);
+        };
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup', onUp);
+        window.addEventListener('pointercancel', onUp);
+        return () => {
+            window.removeEventListener('pointermove', onMove);
+            window.removeEventListener('pointerup', onUp);
+            window.removeEventListener('pointercancel', onUp);
+        };
+    }, [dragging]);
+
+    // If user choose time range that have 0 datas
+    if (n === 0) {
         return (
             <div className="bg-white rounded-2xl p-6 shadow-sm">
                 <h3 className="text-base font-semibold text-[#1B2559] mb-4">{parameter.nama}</h3>
@@ -43,19 +133,12 @@ export default function ParameterCard({ parameter, unit, readings, kop }) {
         );
     }
 
-    const current = readings[readings.length - 1];
-    const highest = readings.reduce((a, b) => (b.nilai > a.nilai ? b : a), readings[0]);
-    const lowest = readings.reduce((a, b) => (b.nilai < a.nilai ? b : a), readings[0]);
+    const current = data[n - 1];
+    const highest = data.reduce((a, b) => (b.nilai > a.nilai ? b : a), data[0]);
+    const lowest = data.reduce((a, b) => (b.nilai < a.nilai ? b : a), data[0]);
 
     const fmt = (v) => `${v}${satuan ? ` ${satuan}` : ''}`;
-
-    // Count batas atas Y-axis to always show batas atas KOP
-    const dataMax = Math.max(...readings.map((r) => r.nilai));
-    const dataMin = Math.min(...readings.map((r) => r.nilai));
-    const candidatesMax = [dataMax, kop?.max ?? -Infinity].filter((v) => v > -Infinity);
-    const candidatesMin = [dataMin, kop?.min ?? Infinity].filter((v) => v < Infinity);
-    const yMax = Math.max(...candidatesMax) * 1.15;
-    const yMin = 0;
+    const tickFmt = (v) => Number(Number(v).toFixed(2));
 
     return (
         <div className="bg-white rounded-2xl p-6 shadow-sm">
@@ -122,10 +205,34 @@ export default function ParameterCard({ parameter, unit, readings, kop }) {
                 </div>
             </div>
 
+            {/* Petunjuk zoom */}
+            <div className="flex items-center justify-between gap-3 mb-2 min-h-7">
+                <span className="text-[11px] text-[#8292AA]">
+                    Zoom: Ctrl + Scroll
+                </span>
+                {yRange && (
+                    <button
+                        type="button"
+                        onClick={() => setYRange(null)}
+                        className="flex items-center gap-1 text-xs font-medium text-[#003399] hover:underline"
+                    >
+                        <RotateCcw size={12} /> Reset zoom
+                    </button>
+                )}
+            </div>
+
             {/* Chart */}
-            <div className="h-64">
+            <div
+                ref={chartRef}
+                onPointerDown={onPointerDown}
+                style={{
+                    cursor: yRange ? (dragging ? 'grabbing' : 'grab') : 'default',
+                    touchAction: yRange ? 'pan-x' : 'auto',
+                }}
+                className="h-64 select-none outline-none **:outline-none [&_*:focus]:outline-none"
+            >
                 <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={readings} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                    <AreaChart data={data} margin={{ top: PLOT_TOP, right: 10, left: -10, bottom: 0 }}>
                         <defs>
                             <linearGradient id={`fill-${unit.id}-${parameter.id}`} x1="0" y1="0" x2="0" y2="1">
                                 <stop offset="0%" stopColor="#003399" stopOpacity={0.25} />
@@ -145,11 +252,13 @@ export default function ParameterCard({ parameter, unit, readings, kop }) {
                             interval="preserveStartEnd"
                         />
                         <YAxis
-                            domain={[yMin, yMax]}
+                            domain={[curY.min, curY.max]}
+                            allowDataOverflow
+                            tickFormatter={tickFmt}
                             tick={{ fontSize: 11, fill: '#8292AA' }}
                             axisLine={false}
                             tickLine={false}
-                            width={36}
+                            width={44}
                         />
                         <Tooltip
                             formatter={(value) => [fmt(value), parameter.nama]}

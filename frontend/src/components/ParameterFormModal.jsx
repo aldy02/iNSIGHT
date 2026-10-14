@@ -377,7 +377,7 @@ function ParameterFormModalContent({
           <Field
             label="Nama Parameter"
             error={errors.parameter}
-            hint={isEdit ? 'Nama parameter tidak bisa diubah di sini. Untuk parameter lain, klik ikon edit pada barisnya.' : undefined}
+            hint={isEdit ? 'Nama parameter tidak bisa diubah di sini. Untuk parameter lain, klik ikon edit pada barisnya' : undefined}
           >
             <input
               type="text"
@@ -392,29 +392,48 @@ function ParameterFormModalContent({
 
           <Section
             title="Lokasi di Dashboard"
-            desc="Parameter tampil di menu mana."
+            desc="Parameter tampil di menu mana"
           >
-            <ChoiceField
-              label="Kategori Utama"
-              value={form.main}
-              onChange={(v) => set({ main: v, sub: '', subNew: '', unit: '', unitNew: '' })}
-              options={tree.map((m) => m.nama)}
-              allowNew={false}
-              error={errors.main}
-              hint="Menentukan menu tempat parameter tampil."
-            />
+            <div className="sm:col-span-2">
+              <ChoiceField
+                label="Kategori Utama"
+                value={form.main}
+                onChange={(v) =>
+                  set({
+                    main: v,
+                    sub: '',
+                    subNew: '',
+                    unit: '',
+                    unitNew: '',
+                  })
+                }
+                options={tree.map((m) => m.nama)}
+                allowNew={false}
+                error={errors.main}
+                hint="Menentukan menu tempat parameter tampil."
+              />
+            </div>
+
             <ChoiceField
               label="Sub Kategori"
               value={form.sub}
-              onChange={(v) => set({ sub: v, subNew: '', unit: '', unitNew: '' })}
+              onChange={(v) =>
+                set({
+                  sub: v,
+                  subNew: '',
+                  unit: '',
+                  unitNew: '',
+                })
+              }
               newValue={form.subNew}
               onNewChange={(v) => set({ subNew: v })}
               options={mainNode ? mainNode.subs.map((s) => s.nama) : []}
               disabled={!form.main}
               error={errors.sub}
-              hint="Isi “-” kalau tidak ada sub kategori."
+              hint="Isi '-' kalau tidak ada sub kategori."
               placeholder='Nama sub kategori, atau "-"'
             />
+
             <ChoiceField
               label="Unit"
               value={form.unit}
@@ -424,7 +443,7 @@ function ParameterFormModalContent({
               options={subNode ? subNode.units : []}
               disabled={!form.sub}
               error={errors.unit}
-              hint="Isi “-” kalau tidak ada unit."
+              hint="Isi '-' kalau tidak ada unit."
               placeholder='Nama unit, atau "-"'
             />
           </Section>
@@ -466,7 +485,7 @@ function ParameterFormModalContent({
                 className={inputClass}
               />
             </Field>
-            <Field label="Berlaku Sejak" hint="Tanggal KOP ini mulai dipakai.">
+            <Field label="Berlaku Sejak" hint="Tanggal KOP ini mulai dipakai">
               <input
                 type="date"
                 value={form.effectiveDate}
@@ -476,7 +495,7 @@ function ParameterFormModalContent({
             </Field>
           </Section>
 
-          <Section title="Sumber Data" desc="Dari file dan kolom mana nilai ini dibaca saat upload.">
+          <Section title="Sumber Data" desc="Dari file dan kolom mana parameter ini dibaca saat upload">
             <Field label="File Excel Sumber" error={errors.sourceId}>
               <SelectBox value={form.sourceId} onChange={(e) => set({ sourceId: e.target.value })}>
                 <option value="">Pilih file</option>
@@ -485,7 +504,7 @@ function ParameterFormModalContent({
                 ))}
               </SelectBox>
             </Field>
-            <Field label="Huruf Kolom" error={errors.column} hint="Huruf kolom di Excel, mulai baris data yang sudah diatur untuk file ini.">
+            <Field label="Huruf Kolom" error={errors.column} hint="Huruf kolom di Excel">
               <input
                 type="text"
                 value={form.column}

@@ -370,7 +370,6 @@ exports.updateParameter = async (req, res) => {
 };
 
 // DELETE /api/parameters/:unitId/:parameterId
-// Menghapus pemetaan kolom + KOP aktif. Data harian di daily_readings TIDAK dihapus.
 exports.deleteParameter = async (req, res) => {
   let t;
   try {
