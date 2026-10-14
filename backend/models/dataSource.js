@@ -1,7 +1,6 @@
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/db');
 
-// Satu baris = satu file sumber milik satu pabrik (Utility, Boiler Batubara, Lingkungan, ...)
 const DataSource = sequelize.define('DataSource', {
   id: {
     type: DataTypes.INTEGER.UNSIGNED,

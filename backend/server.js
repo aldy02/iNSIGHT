@@ -9,6 +9,7 @@ const authRoutes = require('./routes/authRoutes');
 const importRoutes = require('./routes/importRoutes');
 const plantRoutes = require('./routes/plantRoutes');
 const dataRoutes = require('./routes/dataRoutes');
+const parameterRoutes = require('./routes/parameterRoutes');
 
 const app = express();
 
@@ -24,7 +25,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/import', importRoutes);
 app.use('/api/plants', plantRoutes);
 app.use('/api/master', dataRoutes); // api/master/structure
-app.use('/api', dataRoutes); 
+app.use('/api', dataRoutes);
+app.use('/api/parameters', parameterRoutes);
 
 const PORT = process.env.PORT || 5000;
 
