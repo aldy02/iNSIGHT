@@ -67,7 +67,14 @@ export default function PdfLineChart({ id, data, kop, width = 494, height = 135 
 
       <Svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
         <Defs>
-          <LinearGradient id={`g-${id}`} x1="0" y1="0" x2="0" y2="1">
+          <LinearGradient
+            id={`g-${id}`}
+            gradientUnits="userSpaceOnUse"
+            x1={0}
+            y1={m.top}
+            x2={0}
+            y2={m.top + plotH}
+          >
             <Stop offset="0%" stopColor={C.actual} stopOpacity={0.25} />
             <Stop offset="100%" stopColor={C.actual} stopOpacity={0} />
           </LinearGradient>

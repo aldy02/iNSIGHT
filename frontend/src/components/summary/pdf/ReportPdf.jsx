@@ -1,21 +1,21 @@
-// src/components/summary/pdf/ReportPdf.jsx
-import { Document, Page, View, Text, StyleSheet } from '@react-pdf/renderer';
+import { Document, Page, View, Text, Image, StyleSheet } from '@react-pdf/renderer';
 import PdfLineChart from './PdfLineChart';
 import { fmtNum } from '../../../utils/summary';
+import logo from '../../../assets/Logo.png';
 
 const INK = '#1B2559';
 const MUTED = '#8292AA';
 const LINE = '#E2E8F0';
 
 const s = StyleSheet.create({
-  page: { padding: 32, fontSize: 9, fontFamily: 'Helvetica', color: INK },
-  title: { fontSize: 24, fontFamily: 'Helvetica-Bold', marginTop: 8 },
+  page: { paddingTop: 32, paddingHorizontal: 32, paddingBottom: 60, fontSize: 9, fontFamily: 'Helvetica', color: INK },
+  title: { fontSize: 22, fontFamily: 'Helvetica-Bold', marginTop: 8 },
   intro: { fontSize: 10.5, marginTop: 6, marginBottom: 14, lineHeight: 1.4 },
   bold: { fontFamily: 'Helvetica-Bold' },
   category: { fontSize: 13, fontFamily: 'Helvetica-Bold', paddingBottom: 4, borderBottomWidth: 0.7, borderBottomColor: LINE, marginTop: 10, marginBottom: 8 },
   group: { fontSize: 11, fontFamily: 'Helvetica-Bold', marginBottom: 6, marginTop: 2 },
 
-// Card box
+  // Card box
   card: { borderLeftWidth: 0.7, borderRightWidth: 0.7, borderColor: LINE },
   cardFirst: { borderTopWidth: 0.7, borderTopLeftRadius: 6, borderTopRightRadius: 6 },
   cardNext: { borderTopWidth: 0.5 },
@@ -33,6 +33,25 @@ const s = StyleSheet.create({
   statLabel: { fontSize: 7, color: MUTED },
   statValue: { fontSize: 9, fontFamily: 'Helvetica-Bold', marginTop: 2 },
   summary: { marginTop: 12, fontSize: 9, lineHeight: 1.6 },
+
+  // Footer
+  footer: {
+    position: 'absolute',
+    left: 32,
+    right: 32,
+    bottom: 18,
+    paddingTop: 6,
+    borderTopWidth: 0.7,
+    borderTopColor: LINE,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    fontSize: 8,
+    color: MUTED,
+  },
+  footerLogo: { width: 84, height: 12.5 }, // rasio 504x75
+  footerText: { flex: 1, textAlign: 'center', paddingHorizontal: 8 },
+  footerPage: { width: 84, textAlign: 'right' },
 });
 
 function Stat({ label, value, last }) {
@@ -77,7 +96,7 @@ function ParamBlock({ p, title, first, last }) {
   );
 }
 
-// Bouilding block category => sub category => unit => paramete
+// Building block category => sub category => unit => parameter
 function buildBlocks(report) {
   const blocks = [];
   const seenCat = new Set();
@@ -106,9 +125,14 @@ function buildBlocks(report) {
   return blocks;
 }
 
+const formatPrinted = (d = new Date()) =>
+  d.toLocaleString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
 export default function ReportPdf({ report }) {
+  const printedAt = report.printedAt ?? formatPrinted();
+
   return (
-    <Document title={`Laporan ${report.plantName}`}>
+    <Document title={`Laporan ${report.plantName}`} author="iNSIGHT - Pupuk Kaltim">
       <Page size="A4" style={s.page}>
         <Text style={s.title}>Water Quality</Text>
         <Text style={s.intro}>
@@ -130,6 +154,12 @@ export default function ReportPdf({ report }) {
             </View>
           );
         })}
+
+        <View style={s.footer} fixed>
+          <Image src={logo} style={s.footerLogo} />
+          <Text style={s.footerText}>{`iNSIGHT - Pupuk Kaltim | Dept. PPE | ${report.plantName} | Dicetak ${printedAt}`}</Text>
+          <Text style={s.footerPage} render={({ pageNumber, totalPages }) => `Halaman ${pageNumber} / ${totalPages}`} />
+        </View>
       </Page>
     </Document>
   );
