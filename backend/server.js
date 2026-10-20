@@ -10,6 +10,7 @@ const importRoutes = require('./routes/importRoutes');
 const plantRoutes = require('./routes/plantRoutes');
 const dataRoutes = require('./routes/dataRoutes');
 const parameterRoutes = require('./routes/parameterRoutes');
+const reportRoutes = require('./routes/reportRoutes');
 
 const app = express();
 
@@ -27,6 +28,7 @@ app.use('/api/plants', plantRoutes);
 app.use('/api/master', dataRoutes); // api/master/structure
 app.use('/api', dataRoutes);
 app.use('/api/parameters', parameterRoutes);
+app.use('/api/reports', reportRoutes);
 
 const PORT = process.env.PORT || 5000;
 

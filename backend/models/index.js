@@ -11,6 +11,8 @@ const KopParameter = require('./kopParameter');
 const DailyReading = require('./dailyReading');
 const DataSource = require('./dataSource');
 const SourceColumn = require('./sourceColumn');
+const Report = require('./report');
+const ReportItem = require('./reportItem');
 
 Plant.hasMany(Area, { foreignKey: 'plant_id', onDelete: 'CASCADE' });
 Area.belongsTo(Plant, { foreignKey: 'plant_id' });
@@ -52,6 +54,25 @@ SourceColumn.belongsTo(Unit, { foreignKey: 'unit_id' });
 Parameter.hasMany(SourceColumn, { foreignKey: 'parameter_id', onDelete: 'CASCADE' });
 SourceColumn.belongsTo(Parameter, { foreignKey: 'parameter_id' });
 
+// Report/Summary
+Plant.hasMany(Report, { foreignKey: 'plant_id', onDelete: 'CASCADE' });
+Report.belongsTo(Plant, { foreignKey: 'plant_id' });
+
+User.hasMany(Report, { foreignKey: 'created_by', as: 'createdReports', onDelete: 'SET NULL' });
+Report.belongsTo(User, { foreignKey: 'created_by', as: 'createdByUser' });
+
+User.hasMany(Report, { foreignKey: 'updated_by', as: 'updatedReports', onDelete: 'SET NULL' });
+Report.belongsTo(User, { foreignKey: 'updated_by', as: 'updatedByUser' });
+
+Report.hasMany(ReportItem, { foreignKey: 'report_id', as: 'items', onDelete: 'CASCADE' });
+ReportItem.belongsTo(Report, { foreignKey: 'report_id' });
+
+Unit.hasMany(ReportItem, { foreignKey: 'unit_id', onDelete: 'CASCADE' });
+ReportItem.belongsTo(Unit, { foreignKey: 'unit_id' });
+
+Parameter.hasMany(ReportItem, { foreignKey: 'parameter_id', onDelete: 'CASCADE' });
+ReportItem.belongsTo(Parameter, { foreignKey: 'parameter_id' });
+
 module.exports = {
   sequelize,
   User,
@@ -65,4 +86,6 @@ module.exports = {
   DailyReading,
   DataSource,
   SourceColumn,
+  Report,
+  ReportItem,
 };

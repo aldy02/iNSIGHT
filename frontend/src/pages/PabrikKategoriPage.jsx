@@ -14,6 +14,9 @@ const RANGE_OPTIONS = [
   { label: '3 Bulan', days: 90 },
 ];
 
+// Batas paling awal data history yang diambil untuk digeser di grafik
+const HISTORY_START = '2020-01-01';
+
 // Hitung status
 function computeStatus(nilai, kop) {
   if (!kop || nilai == null) return 'no_kop';
@@ -73,6 +76,7 @@ function GroupSection({ kategoriSlug, kategoriLabel, group, activeRange }) {
   const showUnitTabs = activeSub.units.length > 1;
 
   const [readingsByParam, setReadingsByParam] = useState({});
+  const [historyByParam, setHistoryByParam] = useState({});
   const [loadingReadings, setLoadingReadings] = useState(true);
   const [showTable, setShowTable] = useState(true);
 
@@ -119,6 +123,35 @@ function GroupSection({ kategoriSlug, kategoriLabel, group, activeRange }) {
       })
       .finally(() => setLoadingReadings(false));
   }, [activeUnit?.id, activeSub.slug, activeRange.type, activeRange.days, activeRange.start, activeRange.end]);
+
+  // History lengkap (tanpa filter rentang) untuk geser grafik melewati filter.
+  // Dimuat di belakang layar, tidak memblokir tampilan, dan tidak diulang saat filter rentang berubah.
+  useEffect(() => {
+    if (!activeUnit) return undefined;
+    let cancelled = false;
+    const today = new Date().toISOString().slice(0, 10);
+
+    setHistoryByParam({});
+    Promise.all(
+      visibleParams.map((param) =>
+        getReadings(activeUnit.id, param.id, HISTORY_START, today).then((data) => ({
+          paramId: param.id,
+          data: [...data].sort((a, b) => new Date(a.tanggal) - new Date(b.tanggal)),
+        }))
+      )
+    )
+      .then((results) => {
+        if (cancelled) return;
+        const map = {};
+        results.forEach((r) => { map[r.paramId] = r.data; });
+        setHistoryByParam(map);
+      })
+      .catch(() => {
+        // Kalau gagal, grafik tetap jalan memakai data terfilter saja
+      });
+
+    return () => { cancelled = true; };
+  }, [activeUnit?.id, activeSub.slug]);
 
   const tableRows = visibleParams
     .flatMap((param) => {
@@ -206,6 +239,7 @@ function GroupSection({ kategoriSlug, kategoriLabel, group, activeRange }) {
                     parameter={param}
                     unit={activeUnit}
                     readings={readingsByParam[param.id] || []}
+                    history={historyByParam[param.id]}
                     kop={activeUnit.kop?.[param.id]}
                     satuan={param.satuan}
                   />

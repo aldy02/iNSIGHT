@@ -8,6 +8,7 @@ import {
   ChevronUp,
   ChevronDown,
   ChevronLeft,
+  FileText,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import logoPupukKaltim from '../assets/Logo.png';
@@ -307,6 +308,20 @@ export default function Sidebar({ isOpen, onClose }) {
                   >
                     <SlidersHorizontal size={20} className="shrink-0" />
                     <span>Add/Edit Parameter</span>
+                  </Link>
+
+                  <Link
+                    to="/summary"
+                    onClick={onClose}
+                    className={`
+                      flex items-center gap-3.5 w-full px-4 py-3
+                      rounded-xl text-[14px] font-medium
+                      transition-colors duration-150
+                      ${isLeafActive('/summary') ? activeStyle : `${baseText} ${hoverStyle}`}
+                    `}
+                  >
+                    <FileText size={20} className="shrink-0" />
+                    <span>Summary</span>
                   </Link>
                 </>
               )}

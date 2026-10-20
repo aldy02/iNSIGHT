@@ -1,5 +1,8 @@
-import { useState, useEffect, useRef } from 'react';
-import { CircleCheck, TrendingUp, TrendingDown, KeySquare, Inbox, RotateCcw } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
+import {
+    CircleCheck, TrendingUp, TrendingDown, KeySquare, Inbox, RotateCcw, Maximize2, X,
+} from 'lucide-react';
 import {
     ResponsiveContainer,
     AreaChart,
@@ -13,10 +16,64 @@ import {
 } from 'recharts';
 import { formatKop } from '../tests/data';
 
-const ZOOM_STEP = 0.8; // Everytime scroll, range y will zoom in 80% or zoom out 125%
-const MIN_SPAN_RATIO = 0.02; // Zoom max 2%
+const ZOOM_STEP = 0.8; // Setiap scroll, rentang Y zoom in 80% atau zoom out 125%
+const MIN_SPAN_RATIO = 0.02; // Zoom in maksimal 2% dari rentang default
+const MAX_ZOOM_OUT = 3; // Zoom out maksimal 3x rentang default
 const PLOT_TOP = 10;
 const PLOT_BOTTOM = 30;
+const PLOT_RIGHT = 10;
+const TIME_KEY = 'tanggal'; // nama field timestamp di tiap data readings/history
+const toMs = (r) => new Date(r[TIME_KEY]).getTime();
+
+// Langkah tick yang "bulat": 1, 2, atau 5 dikali pangkat 10
+const niceStep = (raw) => {
+    const exp = Math.floor(Math.log10(raw));
+    const f = raw / 10 ** exp;
+    const nf = f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10;
+    return nf * 10 ** exp;
+};
+
+// Tick sumbu Y yang rapi untuk rentang [min, max], kira-kira sebanyak `target`
+const buildYTicks = (min, max, target = 5) => {
+    const span = max - min;
+    if (!(span > 0)) return { ticks: [min], decimals: 0 };
+    const step = niceStep(span / target);
+    const decimals = Math.max(0, -Math.floor(Math.log10(step)));
+    const ticks = [];
+    for (let v = Math.ceil(min / step - 1e-9) * step; v <= max + step * 1e-9; v += step) {
+        ticks.push(Number(v.toFixed(10)));
+    }
+    return { ticks, decimals };
+};
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// Pilihan jarak tick (hari). Dipilih otomatis berdasarkan lebar rentang yang sedang terlihat.
+const X_STEPS = [1, 2, 3, 5, 7, 10, 14, 30, 60];
+
+// Ambil jarak terkecil yang membuat jumlah tick tidak melebihi `maxTicks`
+// Contoh (maxTicks 18): 1 minggu -> 1 hari, 1 bulan -> 2 hari, 3 bulan -> 5 hari, 6 bulan -> 10 hari
+const pickStepDays = (spanMs, maxTicks) => {
+    const days = Math.max(1, spanMs / DAY_MS);
+    return X_STEPS.find((s) => days / s <= maxTicks) ?? X_STEPS[X_STEPS.length - 1];
+};
+
+// Tick sumbu X per N hari: ambil data pertama di setiap blok N hari sejak data awal.
+// Aman kalau ada hari yang kosong, karena yang dipakai label data yang benar-benar ada.
+const buildXTicks = (data, stepDays = 3) => {
+    if (!data.length) return [];
+    const start = toMs(data[0]);
+    const ticks = [];
+    let nextBucket = 0;
+    data.forEach((r) => {
+        const bucket = Math.floor((toMs(r) - start) / (stepDays * DAY_MS));
+        if (bucket >= nextBucket) {
+            ticks.push(r.label);
+            nextBucket = bucket + 1;
+        }
+    });
+    return ticks;
+};
 
 function StatBox({ icon, iconBg, iconColor, label, value, sub }) {
     return (
@@ -33,47 +90,153 @@ function StatBox({ icon, iconBg, iconColor, label, value, sub }) {
     );
 }
 
-export default function ParameterCard({ parameter, unit, readings, kop }) {
-    const satuan = parameter.satuan ?? '';
-    const data = readings || [];
-    const n = data.length;
+// 4 kotak stat (dipakai di kartu dan di layar penuh)
+function StatsGrid({ current, highest, lowest, kop, satuan, fmt, className = '' }) {
+    return (
+        <div className={`grid grid-cols-2 gap-y-4 gap-x-4 ${className}`}>
+            <StatBox
+                icon={<CircleCheck size={18} />}
+                iconBg="bg-blue-50"
+                iconColor="text-blue-500"
+                label="Nilai Terkini"
+                value={fmt(current.nilai)}
+                sub={current.label}
+            />
+            <StatBox
+                icon={<TrendingUp size={18} />}
+                iconBg="bg-red-50"
+                iconColor="text-red-500"
+                label="Tertinggi"
+                value={fmt(highest.nilai)}
+                sub={highest.label}
+            />
+            <StatBox
+                icon={<TrendingDown size={18} />}
+                iconBg="bg-yellow-50"
+                iconColor="text-yellow-500"
+                label="Terendah"
+                value={fmt(lowest.nilai)}
+                sub={lowest.label}
+            />
+            <StatBox
+                icon={<KeySquare size={18} />}
+                iconBg="bg-emerald-50"
+                iconColor="text-emerald-500"
+                label="KOP"
+                value={formatKop(kop, satuan)}
+                sub="Batas Kendali Operasi"
+            />
+        </div>
+    );
+}
 
-    // Zoom Y: null = display full
+/**
+ * Legenda + petunjuk zoom + chart. Dipakai di kartu (tinggi tetap) dan di layar penuh (fill = true).
+ * Zoom Y: Ctrl/Cmd + scroll (bisa zoom in dan zoom out melewati tampilan default, dasar selalu 0).
+ * Drag (klik kiri tahan):
+ *  - Layar penuh (fill): selalu aktif. Kiri/kanan menggeser jendela waktu melewati filter (sepanjang `history`).
+ *    Kalau Y juga sudah di-zoom, atas/bawah ikut menggeser sumbu Y.
+ *  - Kartu: aktif setelah Y di-zoom.
+ */
+function ParameterChart({ parameter, unit, data, history, kop, fmt, gradId, fill = false }) {
+    // Sumber data untuk digeser: seluruh history kalau ada, kalau tidak pakai data terfilter saja
+    const source = history && history.length ? history : data;
+
+    // Jendela waktu default = rentang filter saat ini
+    const baseStart = toMs(data[0]);
+    const baseEnd = toMs(data[data.length - 1]);
+    const span = Math.max(1, baseEnd - baseStart);
+    const minT = toMs(source[0]);
+    const maxT = toMs(source[source.length - 1]);
+
+    // Zoom Y: null = tampil default. winStart = awal jendela waktu (ms), null = pakai rentang filter
     const [yRange, setYRange] = useState(null);
+    const [winStart, setWinStart] = useState(null);
     const [dragging, setDragging] = useState(false);
     const chartRef = useRef(null);
     const dragRef = useRef(null);
 
-    // When time range changes, zoom reset
+    // Saat filter / data berubah, reset zoom dan posisi geser
     useEffect(() => {
         setYRange(null);
-    }, [readings]);
+        setWinStart(null);
+    }, [data]);
 
-    // Space 15% from highest point
-    const dataMax = n ? Math.max(...data.map((r) => r.nilai)) : 0;
-    const baseMax = Math.max(dataMax, kop?.max ?? -Infinity) * 1.15 || 1;
-    const curY = yRange ?? { min: 0, max: baseMax };
+    const isZoomed = !!yRange;
+    // Di layar penuh geser selalu aktif, di kartu hanya setelah zoom Y
+    const canPan = fill || isZoomed;
+    const panned = canPan && winStart != null;
 
-    const clampY = (min, span) => {
-        const m = Math.max(0, Math.min(min, baseMax - span));
-        return { min: m, max: m + span };
+    const clampStart = (s) => Math.max(minT, Math.min(s, Math.max(minT, maxT - span)));
+
+    // Data yang terlihat
+    const windowStart = panned ? clampStart(winStart) : baseStart;
+    const visibleData = panned
+        ? source.filter((r) => {
+              const t = toMs(r);
+              return t >= windowStart && t <= windowStart + span;
+          })
+        : data;
+
+    // Skala Y
+    const maxOf = (arr) => Math.max(...arr.map((r) => r.nilai));
+    // Ruang 15% dari titik tertinggi
+    const baseMax = Math.max(maxOf(data), kop?.max ?? -Infinity) * 1.15 || 1;
+    const yLimit = Math.max(baseMax, Math.max(maxOf(source), kop?.max ?? -Infinity) * 1.15 || 1);
+
+    // Skala default mengikuti data yang sedang terlihat (tidak pernah lebih kecil dari baseMax)
+    const visibleMax = visibleData.length
+        ? Math.max(maxOf(visibleData), kop?.max ?? -Infinity) * 1.15 || 1
+        : baseMax;
+    const fullMax = Math.max(baseMax, visibleMax);
+    const curY = yRange ?? { min: 0, max: fullMax };
+
+    // Batas sumbu Y: dasar selalu 0, zoom out hanya menambah ruang kosong di atas
+    const maxSpan = fullMax * MAX_ZOOM_OUT;
+    const yLo = 0;
+    const yHi = Math.max(yLimit, maxSpan);
+
+    const highest = visibleData.length
+        ? visibleData.reduce((a, b) => (b.nilai > a.nilai ? b : a), visibleData[0])
+        : null;
+
+    // Tick rapi: lebih banyak di layar penuh, lebih sedikit di kartu
+    const { ticks, decimals } = buildYTicks(curY.min, curY.max, fill ? 8 : 5);
+    const tickFmt = (v) => v.toFixed(decimals);
+
+    // Tick sumbu X: jarak (hari) menyesuaikan lebar rentang yang terlihat; layar penuh boleh lebih rapat
+    const visibleSpan = visibleData.length ? toMs(visibleData[visibleData.length - 1]) - toMs(visibleData[0]) : 0;
+    const xTicks = buildXTicks(visibleData, pickStepDays(visibleSpan, fill ? 30 : 18));
+
+    // Lebar sumbu Y mengikuti label terpanjang, supaya tidak terpotong
+    const yAxisWidth = Math.max(
+        36,
+        Math.max(...ticks.map((t) => tickFmt(t).length), 1) * 7 + 10
+    );
+    // Ref supaya handler drag selalu memakai lebar terbaru
+    const yAxisWidthRef = useRef(yAxisWidth);
+    yAxisWidthRef.current = yAxisWidth;
+
+    const clampY = (min, ySpan) => {
+        const m = Math.max(yLo, Math.min(min, yHi - ySpan));
+        return { min: m, max: m + ySpan };
     };
 
-    // Zoom Y axis
+    // Zoom sumbu Y (di sekitar posisi kursor, dasar tidak pernah di bawah 0)
     const zoomY = (dir, frac = 0.5) => {
-        const span = curY.max - curY.min;
-        const newSpan = dir === 'in' ? span * ZOOM_STEP : span / ZOOM_STEP;
-        if (dir === 'in' && newSpan < baseMax * MIN_SPAN_RATIO) return;
-        if (newSpan >= baseMax) {
-            setYRange(null);
-            return;
+        const ySpan = curY.max - curY.min;
+        let newSpan = dir === 'in' ? ySpan * ZOOM_STEP : ySpan / ZOOM_STEP;
+        if (dir === 'in' && newSpan < fullMax * MIN_SPAN_RATIO) return;
+        if (dir === 'out') {
+            if (ySpan >= maxSpan) return;
+            newSpan = Math.min(newSpan, maxSpan);
         }
-        const valueAtCursor = curY.max - frac * span;
+        const valueAtCursor = curY.max - frac * ySpan;
         const newMin = valueAtCursor - (1 - frac) * newSpan;
         setYRange(clampY(newMin, newSpan));
     };
 
-    // Ctrl/Cmd + scroll = zoom Y 
+    // Ctrl/Cmd + scroll = zoom Y saja
     useEffect(() => {
         const el = chartRef.current;
         if (!el) return undefined;
@@ -89,10 +252,17 @@ export default function ParameterCard({ parameter, unit, readings, kop }) {
         return () => el.removeEventListener('wheel', onWheel);
     });
 
-    // Move up or bottom chart area when zoom
+    // Klik kiri tahan + drag
     const onPointerDown = (e) => {
-        if (!yRange || (e.pointerType === 'mouse' && e.button !== 0)) return;
-        dragRef.current = { startY: e.clientY, startMin: yRange.min, span: yRange.max - yRange.min };
+        if (!canPan || (e.pointerType === 'mouse' && e.button !== 0)) return;
+        dragRef.current = {
+            startX: e.clientX,
+            startY: e.clientY,
+            startWin: windowStart,
+            hasY: !!yRange,
+            startMin: yRange?.min ?? 0,
+            ySpan: yRange ? yRange.max - yRange.min : 0,
+        };
         setDragging(true);
     };
 
@@ -102,9 +272,18 @@ export default function ParameterCard({ parameter, unit, readings, kop }) {
             const d = dragRef.current;
             const el = chartRef.current;
             if (!d || !el) return;
-            const plotH = Math.max(1, el.clientHeight - PLOT_TOP - PLOT_BOTTOM);
-            const shift = ((e.clientY - d.startY) / plotH) * d.span;
-            setYRange(clampY(d.startMin + shift, d.span));
+
+            // X: drag ke kanan -> mundur ke waktu yang lebih lama (bisa melewati filter)
+            const plotW = Math.max(1, el.clientWidth - yAxisWidthRef.current - PLOT_RIGHT);
+            const shiftMs = -((e.clientX - d.startX) / plotW) * span;
+            setWinStart(clampStart(d.startWin + shiftMs));
+
+            // Y: geser atas/bawah, hanya kalau Y sedang di-zoom
+            if (d.hasY) {
+                const plotH = Math.max(1, el.clientHeight - PLOT_TOP - PLOT_BOTTOM);
+                const shiftY = ((e.clientY - d.startY) / plotH) * d.ySpan;
+                setYRange(clampY(d.startMin + shiftY, d.ySpan));
+            }
         };
         const onUp = () => {
             dragRef.current = null;
@@ -120,68 +299,22 @@ export default function ParameterCard({ parameter, unit, readings, kop }) {
         };
     }, [dragging]);
 
-    // If user choose time range that have 0 datas
-    if (n === 0) {
-        return (
-            <div className="bg-white rounded-2xl p-6 shadow-sm">
-                <h3 className="text-base font-semibold text-[#1B2559] mb-4">{parameter.nama}</h3>
-                <div className="h-64 flex flex-col items-center justify-center text-[#8292AA]">
-                    <Inbox size={28} className="mb-2" />
-                    <p className="text-sm">Tidak ada data pada rentang ini</p>
-                </div>
-            </div>
-        );
-    }
+    const resetZoom = () => {
+        setYRange(null);
+        setWinStart(null);
+    };
 
-    const current = data[n - 1];
-    const highest = data.reduce((a, b) => (b.nilai > a.nilai ? b : a), data[0]);
-    const lowest = data.reduce((a, b) => (b.nilai < a.nilai ? b : a), data[0]);
+    const showReset = isZoomed || panned;
 
-    const fmt = (v) => `${v}${satuan ? ` ${satuan}` : ''}`;
-    const tickFmt = (v) => Number(Number(v).toFixed(2));
+    const rangeLabel =
+        panned && visibleData.length
+            ? `${visibleData[0].label} – ${visibleData[visibleData.length - 1].label}`
+            : null;
 
     return (
-        <div className="bg-white rounded-2xl p-6 shadow-sm">
-            <h3 className="text-base font-semibold text-[#1B2559] mb-4">{parameter.nama}</h3>
-
-            {/* 4 kotak stat */}
-            <div className="grid grid-cols-2 gap-y-4 gap-x-4 mb-5">
-                <StatBox
-                    icon={<CircleCheck size={18} />}
-                    iconBg="bg-blue-50"
-                    iconColor="text-blue-500"
-                    label="Nilai Terkini"
-                    value={fmt(current.nilai)}
-                    sub={current.label}
-                />
-                <StatBox
-                    icon={<TrendingUp size={18} />}
-                    iconBg="bg-red-50"
-                    iconColor="text-red-500"
-                    label="Tertinggi"
-                    value={fmt(highest.nilai)}
-                    sub={highest.label}
-                />
-                <StatBox
-                    icon={<TrendingDown size={18} />}
-                    iconBg="bg-yellow-50"
-                    iconColor="text-yellow-500"
-                    label="Terendah"
-                    value={fmt(lowest.nilai)}
-                    sub={lowest.label}
-                />
-                <StatBox
-                    icon={<KeySquare size={18} />}
-                    iconBg="bg-emerald-50"
-                    iconColor="text-emerald-500"
-                    label="KOP"
-                    value={formatKop(kop, satuan)}
-                    sub="Batas Kendali Operasi"
-                />
-            </div>
-
+        <div className={fill ? 'flex flex-col h-full min-h-0' : ''}>
             {/* Legenda */}
-            <div className="flex items-center justify-between text-xs text-[#8292AA] mb-4 mt-6 flex-wrap gap-y-2">
+            <div className={`flex items-center justify-between text-xs text-[#8292AA] ${fill ? 'mb-2 mt-3' : 'mb-4 mt-6'} flex-wrap gap-y-2`}>
                 {/* Kontainer Aktual, Batas Atas, Batas Bawah */}
                 <div className="flex items-center gap-5 flex-wrap">
                     <span className="flex items-center gap-1.5">
@@ -200,23 +333,26 @@ export default function ParameterCard({ parameter, unit, readings, kop }) {
                 </div>
 
                 {/* Kontainer Titik Tertinggi */}
-                <div className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-red-500 inline-block" /> Titik Tertinggi &bull; {highest.label}
-                </div>
+                {highest && (
+                    <div className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-red-500 inline-block" /> Titik Tertinggi &bull; {highest.label}
+                    </div>
+                )}
             </div>
 
             {/* Petunjuk zoom */}
             <div className="flex items-center justify-between gap-3 mb-2 min-h-7">
                 <span className="text-[11px] text-[#8292AA]">
-                    Zoom: Ctrl + Scroll
+                    Zoom: Ctrl + Scroll{canPan ? ' • Geser: klik tahan lalu drag' : ''}
+                    {rangeLabel ? ` • ${rangeLabel}` : ''}
                 </span>
-                {yRange && (
+                {showReset && (
                     <button
                         type="button"
-                        onClick={() => setYRange(null)}
+                        onClick={resetZoom}
                         className="flex items-center gap-1 text-xs font-medium text-[#003399] hover:underline"
                     >
-                        <RotateCcw size={12} /> Reset zoom
+                        <RotateCcw size={12} /> Reset
                     </button>
                 )}
             </div>
@@ -226,15 +362,15 @@ export default function ParameterCard({ parameter, unit, readings, kop }) {
                 ref={chartRef}
                 onPointerDown={onPointerDown}
                 style={{
-                    cursor: yRange ? (dragging ? 'grabbing' : 'grab') : 'default',
-                    touchAction: yRange ? 'pan-x' : 'auto',
+                    cursor: canPan ? (dragging ? 'grabbing' : 'grab') : 'default',
+                    touchAction: canPan ? 'none' : 'auto',
                 }}
-                className="h-64 select-none outline-none **:outline-none [&_*:focus]:outline-none"
+                className={`${fill ? 'flex-1 min-h-0' : 'h-64'} select-none outline-none **:outline-none [&_*:focus]:outline-none`}
             >
                 <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={data} margin={{ top: PLOT_TOP, right: 10, left: -10, bottom: 0 }}>
+                    <AreaChart data={visibleData} margin={{ top: PLOT_TOP, right: PLOT_RIGHT, left: 0, bottom: 0 }}>
                         <defs>
-                            <linearGradient id={`fill-${unit.id}-${parameter.id}`} x1="0" y1="0" x2="0" y2="1">
+                            <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
                                 <stop offset="0%" stopColor="#003399" stopOpacity={0.25} />
                                 <stop offset="100%" stopColor="#003399" stopOpacity={0} />
                             </linearGradient>
@@ -246,19 +382,24 @@ export default function ParameterCard({ parameter, unit, readings, kop }) {
                         />
                         <XAxis
                             dataKey="label"
+                            ticks={xTicks}
+                            interval={0}
+                            padding={{ left: 12, right: 12 }}
                             tick={{ fontSize: 11, fill: '#8292AA' }}
                             axisLine={{ stroke: '#E5E9F2' }}
                             tickLine={false}
-                            interval="preserveStartEnd"
+                            tickMargin={8}
                         />
                         <YAxis
                             domain={[curY.min, curY.max]}
+                            ticks={ticks}
+                            interval={0}
                             allowDataOverflow
                             tickFormatter={tickFmt}
                             tick={{ fontSize: 11, fill: '#8292AA' }}
                             axisLine={false}
                             tickLine={false}
-                            width={44}
+                            width={yAxisWidth}
                         />
                         <Tooltip
                             formatter={(value) => [fmt(value), parameter.nama]}
@@ -285,19 +426,166 @@ export default function ParameterCard({ parameter, unit, readings, kop }) {
                             dataKey="nilai"
                             stroke="#003399"
                             strokeWidth={2}
-                            fill={`url(#fill-${unit.id}-${parameter.id})`}
+                            fill={`url(#${gradId})`}
+                            isAnimationActive={!canPan}
                         />
-                        <ReferenceDot
-                            x={highest.label}
-                            y={highest.nilai}
-                            r={5}
-                            fill="#EF4444"
-                            stroke="#fff"
-                            strokeWidth={2}
-                        />
+                        {highest && (
+                            <ReferenceDot
+                                x={highest.label}
+                                y={highest.nilai}
+                                r={5}
+                                fill="#EF4444"
+                                stroke="#fff"
+                                strokeWidth={2}
+                            />
+                        )}
                     </AreaChart>
                 </ResponsiveContainer>
             </div>
+        </div>
+    );
+}
+
+// Layar penuh sungguhan: memakai Fullscreen API browser (seperti F11), dan jatuh ke overlay satu layar
+// kalau browser menolak. Lewat portal ke document.body supaya "position: fixed" tidak terganggu
+// transform dari motion.div di LayoutWrapper.
+function FullscreenChart({ open, onClose, parameter, unit, data, history, kop, satuan, fmt, stats }) {
+    const rootRef = useRef(null);
+
+    useEffect(() => {
+        if (!open) return undefined;
+        const el = rootRef.current;
+
+        // Keluar dari fullscreen browser (mis. tombol Esc) -> tutup tampilan
+        const onFsChange = () => {
+            if (!document.fullscreenElement) onClose();
+        };
+        // Cadangan kalau fullscreen browser tidak aktif
+        const onKey = (e) => e.key === 'Escape' && onClose();
+
+        document.addEventListener('fullscreenchange', onFsChange);
+        window.addEventListener('keydown', onKey);
+        const prevOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+        if (el?.requestFullscreen) el.requestFullscreen().catch(() => {});
+
+        return () => {
+            document.removeEventListener('fullscreenchange', onFsChange);
+            window.removeEventListener('keydown', onKey);
+            document.body.style.overflow = prevOverflow;
+            if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+        };
+    }, [open, onClose]);
+
+    if (!open) return null;
+
+    return createPortal(
+        <div ref={rootRef} className="fixed inset-0 z-9999 bg-white flex flex-col">
+            <div className="flex items-start justify-between gap-3 px-5 pt-4">
+                <h3 className="text-lg font-semibold text-[#1B2559]">{parameter.nama}</h3>
+                <button
+                    type="button"
+                    onClick={onClose}
+                    title="Keluar layar penuh (Esc)"
+                    aria-label="Keluar layar penuh"
+                    className="p-1.5 rounded-md text-[#8292AA] hover:bg-slate-100 hover:text-[#1B2559] transition-colors shrink-0"
+                >
+                    <X size={20} />
+                </button>
+            </div>
+
+            <StatsGrid
+                {...stats}
+                kop={kop}
+                satuan={satuan}
+                fmt={fmt}
+                className="md:grid-cols-4 px-5 mt-3"
+            />
+
+            <div className="flex-1 min-h-0 px-5 pb-4">
+                <ParameterChart
+                    parameter={parameter}
+                    unit={unit}
+                    data={data}
+                    history={history}
+                    kop={kop}
+                    fmt={fmt}
+                    gradId={`fill-full-${unit.id}-${parameter.id}`}
+                    fill
+                />
+            </div>
+        </div>,
+        document.body
+    );
+}
+
+export default function ParameterCard({ parameter, unit, readings, history, kop }) {
+    const satuan = parameter.satuan ?? '';
+    const data = readings || [];
+    const n = data.length;
+
+    const [fullscreen, setFullscreen] = useState(false);
+    const closeFullscreen = useCallback(() => setFullscreen(false), []);
+
+    // Kalau user memilih rentang waktu yang tidak punya data
+    if (n === 0) {
+        return (
+            <div className="bg-white rounded-2xl p-6 shadow-sm">
+                <h3 className="text-base font-semibold text-[#1B2559] mb-4">{parameter.nama}</h3>
+                <div className="h-64 flex flex-col items-center justify-center text-[#8292AA]">
+                    <Inbox size={28} className="mb-2" />
+                    <p className="text-sm">Tidak ada data pada rentang ini</p>
+                </div>
+            </div>
+        );
+    }
+
+    const current = data[n - 1];
+    const highest = data.reduce((a, b) => (b.nilai > a.nilai ? b : a), data[0]);
+    const lowest = data.reduce((a, b) => (b.nilai < a.nilai ? b : a), data[0]);
+    const stats = { current, highest, lowest };
+
+    const fmt = (v) => `${v}${satuan ? ` ${satuan}` : ''}`;
+
+    return (
+        <div className="bg-white rounded-2xl p-6 shadow-sm">
+            <div className="flex items-start justify-between gap-3 mb-4">
+                <h3 className="text-base font-semibold text-[#1B2559]">{parameter.nama}</h3>
+                <button
+                    type="button"
+                    onClick={() => setFullscreen(true)}
+                    title="Layar penuh"
+                    aria-label="Buka grafik layar penuh"
+                    className="p-1.5 -mr-1.5 -mt-1 rounded-md text-[#8292AA] hover:bg-slate-100 hover:text-[#003399] transition-colors shrink-0"
+                >
+                    <Maximize2 size={16} />
+                </button>
+            </div>
+
+            <StatsGrid {...stats} kop={kop} satuan={satuan} fmt={fmt} className="mb-5" />
+
+            <ParameterChart
+                parameter={parameter}
+                unit={unit}
+                data={data}
+                history={history}
+                kop={kop}
+                fmt={fmt}
+                gradId={`fill-${unit.id}-${parameter.id}`}
+            />
+
+            <FullscreenChart
+                open={fullscreen}
+                onClose={closeFullscreen}
+                parameter={parameter}
+                unit={unit}
+                data={data}
+                history={history}
+                kop={kop}
+                satuan={satuan}
+                fmt={fmt}
+                stats={stats}
+            />
         </div>
     );
 }

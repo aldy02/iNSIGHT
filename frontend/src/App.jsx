@@ -1,4 +1,11 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import {
+  Route,
+  Navigate,
+  Outlet,
+  RouterProvider,
+  createBrowserRouter,
+  createRoutesFromElements,
+} from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
@@ -9,35 +16,44 @@ import LayoutWrapper from './components/LayoutWrapper';
 import ProtectedRoute from './components/ProtectedRoute';
 import NotFound from './pages/NotFound';
 import FormParameter from './pages/FormParameter';
+import Summary from './pages/Summary';
 
-function App() {
-  return (
-    <AuthProvider>
-      <Routes>
-        <Route path="/" element={<Navigate to="/login" replace />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/signup" element={<Signup />} />
+const router = createBrowserRouter(
+  createRoutesFromElements(
+    <Route
+      element={
+        <AuthProvider>
+          <Outlet />
+        </AuthProvider>
+      }
+    >
+      <Route path="/" element={<Navigate to="/login" replace />} />
+      <Route path="/login" element={<Login />} />
+      <Route path="/signup" element={<Signup />} />
 
-        {/* Wajib Login */}
-        <Route element={<ProtectedRoute />}>
-          <Route element={<LayoutWrapper />}>
-            <Route path="/pabrik/:kode" element={<PabrikPage />} />
-            <Route path="/pabrik/:kode/:kategori" element={<PabrikKategoriPage />} />
+      {/* Wajib Login */}
+      <Route element={<ProtectedRoute />}>
+        <Route element={<LayoutWrapper />}>
+          <Route path="/pabrik/:kode" element={<PabrikPage />} />
+          <Route path="/pabrik/:kode/:kategori" element={<PabrikKategoriPage />} />
 
-            {/* Admin Only */}
-            <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
-              <Route path="/upload" element={<FormUpload />} />
-              <Route path="/parameter" element={<FormParameter />} />
-            </Route>
+          {/* Admin Only */}
+          <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
+            <Route path="/upload" element={<FormUpload />} />
+            <Route path="/parameter" element={<FormParameter />} />
+            <Route path="/summary" element={<Summary />} />
           </Route>
         </Route>
+      </Route>
 
-        {/* Not Found Route */}
-        <Route path="*" element={<NotFound />} />
+      {/* Not Found Route */}
+      <Route path="*" element={<NotFound />} />
+    </Route>
+  )
+);
 
-      </Routes>
-    </AuthProvider>
-  );
+function App() {
+  return <RouterProvider router={router} />;
 }
 
 export default App;
