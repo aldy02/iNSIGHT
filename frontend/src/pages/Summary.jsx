@@ -9,6 +9,9 @@ import ReportPreview from '../components/summary/ReportPreview';
 import { ErrorNotice } from '../components/summary/FormControls';
 import UnsavedChangesModal from '../components/summary/UnsavedChangesModal';
 import NavigationGuard from '../components/summary/NavigationGuard';
+import { pdf } from '@react-pdf/renderer';
+import ReportPdf from '../components/summary/pdf/ReportPdf';
+import { buildPdfReport } from '../utils/buildPdfReport';
 
 export default function Summary() {
   const [plantId, setPlantId] = useState(null);
@@ -30,6 +33,7 @@ export default function Summary() {
   const [savedAt, setSavedAt] = useState(null);
   const [reloadTick, setReloadTick] = useState(0);
   const [pending, setPending] = useState(null);
+  const [downloading, setDownloading] = useState(false);
 
   const plant = plants.find((p) => p.id === plantId);
 
@@ -125,15 +129,34 @@ export default function Summary() {
   };
 
   const handleDownload = async () => {
-    if (dirty && !(await handleSave())) return; // Save first so pdf will same with database data
-    console.log('Payload report (static):', {
-      plantId,
-      period: { start: startDate, end: endDate },
-      items: builder.toPayloadItems(),
-    });
+    if (dirty && !(await handleSave())) return;
+
+    setDownloading(true);
+    setSaveError('');
+    try {
+      const report = await buildPdfReport({
+        builder,
+        plantName: plant?.nama ?? '',
+        periodLabel,
+        startDate,
+        endDate,
+      });
+      const blob = await pdf(<ReportPdf report={report} />).toBlob();
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Laporan-${plant?.nama}-${startDate}_${endDate}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setSaveError(errorMessage(err, 'Gagal membuat PDF.'));
+    } finally {
+      setDownloading(false);
+    }
   };
 
-  const idle = hasPeriod && structureReady && !loading && !saving && !loadError;
+  const idle = hasPeriod && structureReady && !loading && !saving && !downloading && !loadError;
   const canSave = idle && dirty;
   const canDownload = idle && builder.selectedCount > 0;
   const previewLoading = master.plantsLoading || master.structureLoading || loading;
