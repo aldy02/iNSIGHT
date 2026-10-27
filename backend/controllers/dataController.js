@@ -1,5 +1,6 @@
 const { QueryTypes, Op } = require('sequelize');
 const { sequelize, Plant, Area, MainCategory, SubCategory, Unit, Parameter, KopParameter, DailyReading } = require('../models');
+const { getUnitOrder, sortUnits } = require('../utils/unitOrder');
 
 // Change main category to slug
 function toSlug(str) {
@@ -62,11 +63,13 @@ exports.getStructure = async (req, res) => {
         )
       : [];
 
+    // Custom unit order for this plant + category (if any)
+    const unitOrder = getUnitOrder(plant.kode, kategori);
+
     const subCategoriesData = subCategories.map((sub) => {
       const parameterMap = new Map();
       const unitIdSet = new Set(sub.Units.map((u) => u.id));
 
-      // List parameter + unitIds (unit where the parameter exist)
       points
         .filter((pt) => unitIdSet.has(pt.unit_id))
         .forEach((pt) => {
@@ -105,7 +108,7 @@ exports.getStructure = async (req, res) => {
         id: String(sub.id),
         nama: sub.nama,
         slug: toSlug(sub.nama),
-        units,
+        units: sortUnits(units, unitOrder), // <- ordered here, in the backend
         parameters: [...parameterMap.values()],
       };
     });

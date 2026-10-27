@@ -52,42 +52,6 @@ function rangeToMs(activeRange) {
   return Number.isFinite(diff) ? Math.max(0, diff) : 0;
 }
 
-// Lock: `${kode pabrik}/${slug kategori}` (lower case)
-// If there unit that not in the list, they will be showed in the back
-const UNIT_ORDER = {
-  'p5/desalination': [
-    'UF Tank',
-    'SWRO A',
-    'SWRO B',
-    'BWRO A',
-    'BWRO B',
-    'Raw Condensate Tank',
-  ],
-};
-
-function sortUnits(units, order) {
-  if (!order) return units; // If no order => order default from api
-  const list = order.map((n) => n.toLowerCase());
-  const rank = (u) => {
-    const i = list.indexOf(String(u.nama).trim().toLowerCase());
-    return i === -1 ? list.length : i;
-  };
-  return units
-    .map((u, i) => ({ u, i }))
-    .sort((a, b) => rank(a.u) - rank(b.u) || a.i - b.i)
-    .map((x) => x.u);
-}
-
-function sortStructure(structure, order) {
-  return {
-    ...structure,
-    groups: structure.groups.map((g) => ({
-      ...g,
-      subCategories: g.subCategories.map((s) => ({ ...s, units: sortUnits(s.units, order) })),
-    })),
-  };
-}
-
 function GroupSection({ kategoriSlug, kategoriLabel, group, activeRange }) {
   const subCategories = group.subCategories;
 
@@ -337,12 +301,11 @@ function KategoriContent({ plantId, kode, kategoriSlug }) {
 
   useEffect(() => {
     setLoadingStructure(true);
-    const order = UNIT_ORDER[`${kode}/${kategoriSlug}`.toLowerCase()];
     getStructure(plantId, kategoriSlug)
-      .then((data) => setStructure(sortStructure(data, order)))
+      .then(setStructure)
       .catch(() => setStructure(null))
       .finally(() => setLoadingStructure(false));
-  }, [plantId, kode, kategoriSlug]);
+  }, [plantId, kategoriSlug]);
 
   if (loadingStructure) {
     return (
@@ -454,7 +417,7 @@ export default function PabrikKategoriPage() {
   }
 
   return plantId ? (
-    <KategoriContent plantId={plantId} kode={kode} kategoriSlug={kategori} />
+    <KategoriContent plantId={plantId} kategoriSlug={kategori} />
   ) : (
     <PlaceholderContent kode={kode} kategori={kategori} />
   );

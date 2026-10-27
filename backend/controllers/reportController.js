@@ -11,6 +11,9 @@ const {
     ReportItem,
 } = require('../models');
 
+const { getUnitOrder, sortUnits } = require('../utils/unitOrder');
+const toSlug = (str) => String(str).toLowerCase().trim().replace(/\s+/g, '-');
+
 const MAX_SUMMARY_LENGTH = 5000;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -79,35 +82,43 @@ exports.getStructure = async (req, res) => {
         const num = (v) => (v != null ? parseFloat(v) : null);
 
         const categories = mainCategories
-            .map((mc) => ({
-                id: String(mc.id),
-                nama: mc.nama,
-                subs: mc.SubCategories
-                    .map((sub) => ({
-                        id: String(sub.id),
-                        nama: sub.nama,
-                        units: sub.Units
-                            .map((u) => ({
-                                id: String(u.id),
-                                nama: u.nama,
-                                parameters: [...u.KopParameters]
-                                    .sort((a, b) => a.parameter_id - b.parameter_id)
-                                    .map((kp) => ({
-                                        id: String(kp.Parameter.id),
-                                        nama: kp.Parameter.nama,
-                                        satuan: kp.satuan || '',
-                                        kop: {
-                                            min: num(kp.min_value),
-                                            max: num(kp.max_value),
-                                            minInclusive: !!kp.min_inclusive,
-                                            maxInclusive: !!kp.max_inclusive,
-                                        },
-                                    })),
-                            }))
-                            .filter((u) => u.parameters.length > 0),
-                    }))
-                    .filter((sub) => sub.units.length > 0),
-            }))
+            .map((mc) => {
+                const unitOrder = getUnitOrder(plant.kode, toSlug(mc.nama));
+
+                return {
+                    id: String(mc.id),
+                    nama: mc.nama,
+                    subs: mc.SubCategories
+                        .map((sub) => {
+                            const units = sub.Units
+                                .map((u) => ({
+                                    id: String(u.id),
+                                    nama: u.nama,
+                                    parameters: [...u.KopParameters]
+                                        .sort((a, b) => a.parameter_id - b.parameter_id)
+                                        .map((kp) => ({
+                                            id: String(kp.Parameter.id),
+                                            nama: kp.Parameter.nama,
+                                            satuan: kp.satuan || '',
+                                            kop: {
+                                                min: num(kp.min_value),
+                                                max: num(kp.max_value),
+                                                minInclusive: !!kp.min_inclusive,
+                                                maxInclusive: !!kp.max_inclusive,
+                                            },
+                                        })),
+                                }))
+                                .filter((u) => u.parameters.length > 0);
+
+                            return {
+                                id: String(sub.id),
+                                nama: sub.nama,
+                                units: sortUnits(units, unitOrder),
+                            };
+                        })
+                        .filter((sub) => sub.units.length > 0),
+                };
+            })
             .filter((c) => c.subs.length > 0);
 
         res.json({ data: categories });
