@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import useReportBuilder from '../hooks/useReportBuilder';
 import useSummaryMaster from '../hooks/useSummaryMaster';
 import { getReport, saveReport } from '../api/reports';
@@ -12,8 +12,13 @@ import NavigationGuard from '../components/summary/NavigationGuard';
 import { pdf } from '@react-pdf/renderer';
 import ReportPdf from '../components/summary/pdf/ReportPdf';
 import { buildPdfReport } from '../utils/buildPdfReport';
+import DownloadOverlay from '../components/summary/DownloadOverlay';
 
-export default function Summary() {
+// Wating browser before we next
+const nextPaint = () =>
+  new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+export default function Report() {
   const [plantId, setPlantId] = useState(null);
   const [startDate, setStartDate] = useState(() => {
     const now = new Date();
@@ -33,7 +38,10 @@ export default function Summary() {
   const [savedAt, setSavedAt] = useState(null);
   const [reloadTick, setReloadTick] = useState(0);
   const [pending, setPending] = useState(null);
-  const [downloading, setDownloading] = useState(false);
+
+  // Download overlay controlled in ref so big page not re render
+  const overlayRef = useRef(null);
+  const busyRef = useRef(false);
 
   const plant = plants.find((p) => p.id === plantId);
 
@@ -41,7 +49,7 @@ export default function Summary() {
     if (plantId == null && plants.length > 0) setPlantId(plants[0].id);
   }, [plantId, plants]);
 
-  // Periode
+  // Period
   const rangeError = !!startDate && !!endDate && startDate > endDate;
   const hasPeriod = !!startDate && !!endDate && startDate <= endDate;
   const periodLabel = hasPeriod ? `periode ${fmtDmy(startDate)} \u2013 ${fmtDmy(endDate)}` : '';
@@ -129,11 +137,20 @@ export default function Summary() {
   };
 
   const handleDownload = async () => {
-    if (dirty && !(await handleSave())) return;
+    if (busyRef.current) return;
+    busyRef.current = true;
 
-    setDownloading(true);
+    overlayRef.current?.show(dirty ? 'save' : 'pdf');
+    await nextPaint();
     setSaveError('');
+
     try {
+      if (dirty) {
+        if (!(await handleSave())) return;
+        overlayRef.current?.show('pdf');
+        await nextPaint();
+      }
+
       const report = await buildPdfReport({
         builder,
         plantName: plant?.nama ?? '',
@@ -152,11 +169,12 @@ export default function Summary() {
     } catch (err) {
       setSaveError(errorMessage(err, 'Gagal membuat PDF.'));
     } finally {
-      setDownloading(false);
+      overlayRef.current?.hide();
+      busyRef.current = false;
     }
   };
 
-  const idle = hasPeriod && structureReady && !loading && !saving && !downloading && !loadError;
+  const idle = hasPeriod && structureReady && !loading && !saving && !loadError;
   const canSave = idle && dirty;
   const canDownload = idle && builder.selectedCount > 0;
   const previewLoading = master.plantsLoading || master.structureLoading || loading;
@@ -202,6 +220,8 @@ export default function Summary() {
           loading={previewLoading}
         />
       </div>
+
+      <DownloadOverlay ref={overlayRef} />
 
       <UnsavedChangesModal isOpen={!!pending} onCancel={() => setPending(null)} onConfirm={confirmPending} />
       <NavigationGuard when={dirty} />

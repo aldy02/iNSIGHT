@@ -5,7 +5,9 @@ import { inputCls } from './FormControls';
 import { SMOOTH_EASE } from '../../utils/summary';
 
 // Dropdown multi-selection (checkbox) for parameter
-export default function ParamDropdown({ params, selected, onToggle, onToggleAll, disabled, placeholder }) {
+export default function ParamDropdown({
+  params, selected, onToggle, onToggleAll, disabled, placeholder, noun = 'parameter', colorOf,
+}) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   const isOpen = open && !disabled;
@@ -29,7 +31,7 @@ export default function ParamDropdown({ params, selected, onToggle, onToggleAll,
   const allChecked = params.length > 0 && selected.length === params.length;
   const firstName = params.find((p) => p.id === selected[0])?.nama;
   const label =
-    selected.length === 0 ? placeholder : selected.length === 1 ? firstName : `${selected.length} parameter dipilih`;
+    selected.length === 0 ? placeholder : selected.length === 1 ? firstName : `${selected.length} ${noun} dipilih`;
 
   return (
     <div className="relative" ref={ref}>
@@ -73,7 +75,7 @@ export default function ParamDropdown({ params, selected, onToggle, onToggleAll,
 
             <div className="max-h-56 overflow-y-auto">
               {params.length === 0 ? (
-                <p className="px-3.5 py-3 text-sm text-[#8292AA] text-center">Tidak ada parameter</p>
+                <p className="px-3.5 py-3 text-sm text-[#8292AA] text-center">Tidak ada {noun}</p>
               ) : (
                 params.map((p) => {
                   const checked = selected.includes(p.id);

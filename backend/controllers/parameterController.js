@@ -88,7 +88,7 @@ async function recomputeStatus(t, unitId, parameterId) {
   );
 }
 
-// Satu titik ukur (unit + parameter) dianggap sudah terdaftar kalau punya kolom ATAU KOP aktif
+// Unit + parameter is considered registered if has an active kop or column
 async function pointExists(t, unitId, parameterId) {
   const [row] = await sequelize.query(
     `SELECT (SELECT COUNT(*) FROM source_columns WHERE unit_id = :unitId AND parameter_id = :parameterId)
@@ -96,6 +96,15 @@ async function pointExists(t, unitId, parameterId) {
     { replacements: { unitId, parameterId }, type: QueryTypes.SELECT, transaction: t },
   );
   return Number(row.n) > 0;
+}
+
+// Daily data ammount for one parameter
+async function countReadings(t, unitId, parameterId) {
+  const [row] = await sequelize.query(
+    'SELECT COUNT(*) AS n FROM daily_readings WHERE unit_id = :unitId AND parameter_id = :parameterId',
+    { replacements: { unitId, parameterId }, type: QueryTypes.SELECT, transaction: t },
+  );
+  return Number(row.n);
 }
 
 // Areas table only use as a pabrik connector (not displayed for user)
@@ -176,6 +185,8 @@ async function savePoint(body, oldKey) {
       }
     }
 
+    // Nama baru: pakai parameter yang sudah ada, atau buat baru
+    // New name: use the existing parameter or create new one
     const [param] = await Parameter.findOrCreate({ where: { nama: v.parameter }, transaction: t });
 
     // Main category mush be exist in this plant (Menentukan menu dashboard), not created from form
@@ -202,9 +213,13 @@ async function savePoint(body, oldKey) {
     const newKey = { unitId: unit.id, parameterId: param.id };
     const moved = !oldKey || oldKey.unitId !== newKey.unitId || oldKey.parameterId !== newKey.parameterId;
 
-    // Parameter tidak boleh sudah terdaftar
+    // If parameter already exist in this unit
     if (moved && (await pointExists(t, newKey.unitId, newKey.parameterId))) {
       throw new HttpError(409, 'Parameter ini sudah terdaftar di unit tersebut. Edit baris yang sudah ada.');
+    }
+
+    if (oldKey && moved && (await countReadings(t, newKey.unitId, newKey.parameterId)) > 0) {
+      throw new HttpError(409, 'Titik tujuan sudah punya data harian, sehingga tidak bisa digabung. Hubungi admin.');
     }
 
     // One column in one file only allow to use for 1 parameter
@@ -272,6 +287,24 @@ async function savePoint(body, oldKey) {
       await sequelize.query('DELETE FROM kop_parameters WHERE id = :id', { replacements: { id: existingKop.id }, transaction: t });
     }
 
+    // If unit in parameter change and there is no parameter exist in the change unit so it will allowwd
+    if (oldKey && moved) {
+      await sequelize.query(
+        `UPDATE daily_readings
+            SET unit_id = :newUnitId, parameter_id = :newParameterId
+          WHERE unit_id = :oldUnitId AND parameter_id = :oldParameterId`,
+        {
+          replacements: {
+            newUnitId: newKey.unitId,
+            newParameterId: newKey.parameterId,
+            oldUnitId: oldKey.unitId,
+            oldParameterId: oldKey.parameterId,
+          },
+          transaction: t,
+        },
+      );
+    }
+
     // Status daily data updated
     await recomputeStatus(t, newKey.unitId, newKey.parameterId);
     if (oldKey && moved) await recomputeStatus(t, oldKey.unitId, oldKey.parameterId);
@@ -294,7 +327,7 @@ function handleError(res, err) {
 }
 
 // Handlers
-// GET /api/parameters/meta?plantId=  => pilihan untuk form (kategori utama > sub > unit, daftar parameter, file sumber)
+// GET /api/parameters/meta?plantId=
 exports.getMeta = async (req, res) => {
   try {
     const plantId = Number(req.query.plantId);
@@ -332,7 +365,8 @@ exports.getMeta = async (req, res) => {
   }
 };
 
-// GET /api/parameters?plantId=  => daftar parameter (parameter + lokasi + kolom + KOP)
+// GET /api/parameters?plantId=
+// List parameter (parameter + location + column + kop)
 exports.listParameters = async (req, res) => {
   try {
     const plantId = Number(req.query.plantId);

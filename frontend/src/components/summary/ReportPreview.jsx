@@ -44,7 +44,7 @@ export default function ReportPreview({
         <>
           {sections.length === 0 && (
             <p className="mt-6 text-sm text-[#8292AA]">
-              Laporan masih kosong. Mulai dengan menambahkan kategori utama, lalu pilih unit dan parameter yang
+              Laporan masih kosong. Mulai dengan menambahkan kategori utama, lalu pilih parameter yang
               ingin dimasukkan.
             </p>
           )}

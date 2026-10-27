@@ -16,16 +16,17 @@ import {
 } from 'recharts';
 import { formatKop } from '../tests/data';
 
-const ZOOM_STEP = 0.8; // Setiap scroll, rentang Y zoom in 80% atau zoom out 125%
-const MIN_SPAN_RATIO = 0.02; // Zoom in maksimal 2% dari rentang default
-const MAX_ZOOM_OUT = 3; // Zoom out maksimal 3x rentang default
+const ZOOM_STEP = 0.8; // Evertytime scroll, range Y zoom in 80% or zoom out 125%
+const MIN_SPAN_RATIO = 0.02; // Zoom in max 2% from default range
+const MAX_ZOOM_OUT = 3; // Zoom out max 3x from defualt range
 const PLOT_TOP = 10;
 const PLOT_BOTTOM = 30;
 const PLOT_RIGHT = 10;
-const TIME_KEY = 'tanggal'; // nama field timestamp di tiap data readings/history
+const MIN_TICK_PX = 42; // Minimum distance per x label or x tick for space
+const TIME_KEY = 'tanggal';
 const toMs = (r) => new Date(r[TIME_KEY]).getTime();
 
-// Langkah tick yang "bulat": 1, 2, atau 5 dikali pangkat 10
+// Round tick 1, 2, 5, 10, etc
 const niceStep = (raw) => {
     const exp = Math.floor(Math.log10(raw));
     const f = raw / 10 ** exp;
@@ -33,7 +34,7 @@ const niceStep = (raw) => {
     return nf * 10 ** exp;
 };
 
-// Tick sumbu Y yang rapi untuk rentang [min, max], kira-kira sebanyak `target`
+// Makesure y tick consistant
 const buildYTicks = (min, max, target = 5) => {
     const span = max - min;
     if (!(span > 0)) return { ticks: [min], decimals: 0 };
@@ -48,18 +49,16 @@ const buildYTicks = (min, max, target = 5) => {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-// Pilihan jarak tick (hari). Dipilih otomatis berdasarkan lebar rentang yang sedang terlihat.
-const X_STEPS = [1, 2, 3, 5, 7, 10, 14, 30, 60];
+// Option for x (day) tick range
+const X_STEPS = [1, 2, 3, 4, 5, 7, 10, 14, 30, 60];
 
-// Ambil jarak terkecil yang membuat jumlah tick tidak melebihi `maxTicks`
-// Contoh (maxTicks 18): 1 minggu -> 1 hari, 1 bulan -> 2 hari, 3 bulan -> 5 hari, 6 bulan -> 10 hari
+// Pick max tick, ex: max tick 18 so 1 or 2 week time frame gonna be using 1 day i tick
 const pickStepDays = (spanMs, maxTicks) => {
     const days = Math.max(1, spanMs / DAY_MS);
     return X_STEPS.find((s) => days / s <= maxTicks) ?? X_STEPS[X_STEPS.length - 1];
 };
 
-// Tick sumbu X per N hari: ambil data pertama di setiap blok N hari sejak data awal.
-// Aman kalau ada hari yang kosong, karena yang dipakai label data yang benar-benar ada.
+// Build x tick
 const buildXTicks = (data, stepDays = 3) => {
     if (!data.length) return [];
     const start = toMs(data[0]);
@@ -90,7 +89,7 @@ function StatBox({ icon, iconBg, iconColor, label, value, sub }) {
     );
 }
 
-// 4 kotak stat (dipakai di kartu dan di layar penuh)
+// 4 Stats box
 function StatsGrid({ current, highest, lowest, kop, satuan, fmt, className = '' }) {
     return (
         <div className={`grid grid-cols-2 gap-y-4 gap-x-4 ${className}`}>
@@ -130,46 +129,47 @@ function StatsGrid({ current, highest, lowest, kop, satuan, fmt, className = '' 
     );
 }
 
-/**
- * Legenda + petunjuk zoom + chart. Dipakai di kartu (tinggi tetap) dan di layar penuh (fill = true).
- * Zoom Y: Ctrl/Cmd + scroll (bisa zoom in dan zoom out melewati tampilan default, dasar selalu 0).
- * Drag (klik kiri tahan):
- *  - Layar penuh (fill): selalu aktif. Kiri/kanan menggeser jendela waktu melewati filter (sepanjang `history`).
- *    Kalau Y juga sudah di-zoom, atas/bawah ikut menggeser sumbu Y.
- *  - Kartu: aktif setelah Y di-zoom.
- */
 function ParameterChart({ parameter, unit, data, history, kop, fmt, gradId, fill = false }) {
-    // Sumber data untuk digeser: seluruh history kalau ada, kalau tidak pakai data terfilter saja
     const source = history && history.length ? history : data;
 
-    // Jendela waktu default = rentang filter saat ini
     const baseStart = toMs(data[0]);
     const baseEnd = toMs(data[data.length - 1]);
     const span = Math.max(1, baseEnd - baseStart);
     const minT = toMs(source[0]);
     const maxT = toMs(source[source.length - 1]);
 
-    // Zoom Y: null = tampil default. winStart = awal jendela waktu (ms), null = pakai rentang filter
     const [yRange, setYRange] = useState(null);
     const [winStart, setWinStart] = useState(null);
     const [dragging, setDragging] = useState(false);
     const chartRef = useRef(null);
     const dragRef = useRef(null);
 
-    // Saat filter / data berubah, reset zoom dan posisi geser
+    // Actual chart width, used to determine the number of X-axis ticks
+    const [chartWidth, setChartWidth] = useState(0);
+
+    useEffect(() => {
+        const el = chartRef.current;
+        if (!el) return undefined;
+        setChartWidth(el.clientWidth);
+        const ro = new ResizeObserver(([entry]) => setChartWidth(entry.contentRect.width));
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, []);
+
+    // When filter or data change, reset zoom and position move
     useEffect(() => {
         setYRange(null);
         setWinStart(null);
     }, [data]);
 
     const isZoomed = !!yRange;
-    // Di layar penuh geser selalu aktif, di kartu hanya setelah zoom Y
+    // When fullscreen move x always acitve, when card only after y zoom
     const canPan = fill || isZoomed;
     const panned = canPan && winStart != null;
 
     const clampStart = (s) => Math.max(minT, Math.min(s, Math.max(minT, maxT - span)));
 
-    // Data yang terlihat
+    // Data view
     const windowStart = panned ? clampStart(winStart) : baseStart;
     const visibleData = panned
         ? source.filter((r) => {
@@ -178,20 +178,19 @@ function ParameterChart({ parameter, unit, data, history, kop, fmt, gradId, fill
           })
         : data;
 
-    // Skala Y
+    // Y Scale
     const maxOf = (arr) => Math.max(...arr.map((r) => r.nilai));
-    // Ruang 15% dari titik tertinggi
+    // 15% Space from highest point
     const baseMax = Math.max(maxOf(data), kop?.max ?? -Infinity) * 1.15 || 1;
     const yLimit = Math.max(baseMax, Math.max(maxOf(source), kop?.max ?? -Infinity) * 1.15 || 1);
 
-    // Skala default mengikuti data yang sedang terlihat (tidak pernah lebih kecil dari baseMax)
     const visibleMax = visibleData.length
         ? Math.max(maxOf(visibleData), kop?.max ?? -Infinity) * 1.15 || 1
         : baseMax;
     const fullMax = Math.max(baseMax, visibleMax);
     const curY = yRange ?? { min: 0, max: fullMax };
 
-    // Batas sumbu Y: dasar selalu 0, zoom out hanya menambah ruang kosong di atas
+    // Y axis lowest value always 0
     const maxSpan = fullMax * MAX_ZOOM_OUT;
     const yLo = 0;
     const yHi = Math.max(yLimit, maxSpan);
@@ -200,29 +199,32 @@ function ParameterChart({ parameter, unit, data, history, kop, fmt, gradId, fill
         ? visibleData.reduce((a, b) => (b.nilai > a.nilai ? b : a), visibleData[0])
         : null;
 
-    // Tick rapi: lebih banyak di layar penuh, lebih sedikit di kartu
     const { ticks, decimals } = buildYTicks(curY.min, curY.max, fill ? 8 : 5);
     const tickFmt = (v) => v.toFixed(decimals);
 
-    // Tick sumbu X: jarak (hari) menyesuaikan lebar rentang yang terlihat; layar penuh boleh lebih rapat
-    const visibleSpan = visibleData.length ? toMs(visibleData[visibleData.length - 1]) - toMs(visibleData[0]) : 0;
-    const xTicks = buildXTicks(visibleData, pickStepDays(visibleSpan, fill ? 30 : 18));
-
-    // Lebar sumbu Y mengikuti label terpanjang, supaya tidak terpotong
     const yAxisWidth = Math.max(
         36,
         Math.max(...ticks.map((t) => tickFmt(t).length), 1) * 7 + 10
     );
-    // Ref supaya handler drag selalu memakai lebar terbaru
     const yAxisWidthRef = useRef(yAxisWidth);
     yAxisWidthRef.current = yAxisWidth;
+
+    const visibleSpan = visibleData.length
+        ? toMs(visibleData[visibleData.length - 1]) - toMs(visibleData[0])
+        : 0;
+
+    // Area plot X = chart width minus Y-axis, right margin, and X Axis padding (12 + 12)
+    const plotWidth = chartWidth - yAxisWidth - PLOT_RIGHT - 24;
+    const maxXTicks = chartWidth > 0
+        ? Math.max(2, Math.floor(plotWidth / MIN_TICK_PX))
+        : (fill ? 30 : 18);
+    const xTicks = buildXTicks(visibleData, pickStepDays(visibleSpan, maxXTicks));
 
     const clampY = (min, ySpan) => {
         const m = Math.max(yLo, Math.min(min, yHi - ySpan));
         return { min: m, max: m + ySpan };
     };
 
-    // Zoom sumbu Y (di sekitar posisi kursor, dasar tidak pernah di bawah 0)
     const zoomY = (dir, frac = 0.5) => {
         const ySpan = curY.max - curY.min;
         let newSpan = dir === 'in' ? ySpan * ZOOM_STEP : ySpan / ZOOM_STEP;
@@ -236,7 +238,7 @@ function ParameterChart({ parameter, unit, data, history, kop, fmt, gradId, fill
         setYRange(clampY(newMin, newSpan));
     };
 
-    // Ctrl/Cmd + scroll = zoom Y saja
+    // Ctrl/cmd + scroll = only zoom y
     useEffect(() => {
         const el = chartRef.current;
         if (!el) return undefined;
@@ -252,7 +254,7 @@ function ParameterChart({ parameter, unit, data, history, kop, fmt, gradId, fill
         return () => el.removeEventListener('wheel', onWheel);
     });
 
-    // Klik kiri tahan + drag
+    // Left click hold and drag
     const onPointerDown = (e) => {
         if (!canPan || (e.pointerType === 'mouse' && e.button !== 0)) return;
         dragRef.current = {
@@ -273,12 +275,12 @@ function ParameterChart({ parameter, unit, data, history, kop, fmt, gradId, fill
             const el = chartRef.current;
             if (!d || !el) return;
 
-            // X: drag ke kanan -> mundur ke waktu yang lebih lama (bisa melewati filter)
+            // X drag right, time back
             const plotW = Math.max(1, el.clientWidth - yAxisWidthRef.current - PLOT_RIGHT);
             const shiftMs = -((e.clientX - d.startX) / plotW) * span;
             setWinStart(clampStart(d.startWin + shiftMs));
 
-            // Y: geser atas/bawah, hanya kalau Y sedang di-zoom
+            // Y move top bottom, only when y is zooming
             if (d.hasY) {
                 const plotH = Math.max(1, el.clientHeight - PLOT_TOP - PLOT_BOTTOM);
                 const shiftY = ((e.clientY - d.startY) / plotH) * d.ySpan;
@@ -446,9 +448,6 @@ function ParameterChart({ parameter, unit, data, history, kop, fmt, gradId, fill
     );
 }
 
-// Layar penuh sungguhan: memakai Fullscreen API browser (seperti F11), dan jatuh ke overlay satu layar
-// kalau browser menolak. Lewat portal ke document.body supaya "position: fixed" tidak terganggu
-// transform dari motion.div di LayoutWrapper.
 function FullscreenChart({ open, onClose, parameter, unit, data, history, kop, satuan, fmt, stats }) {
     const rootRef = useRef(null);
 
@@ -456,11 +455,11 @@ function FullscreenChart({ open, onClose, parameter, unit, data, history, kop, s
         if (!open) return undefined;
         const el = rootRef.current;
 
-        // Keluar dari fullscreen browser (mis. tombol Esc) -> tutup tampilan
+        // Exit from fullscren can use esc
         const onFsChange = () => {
             if (!document.fullscreenElement) onClose();
         };
-        // Cadangan kalau fullscreen browser tidak aktif
+        // If fullscreen browser not active
         const onKey = (e) => e.key === 'Escape' && onClose();
 
         document.addEventListener('fullscreenchange', onFsChange);
@@ -527,7 +526,7 @@ export default function ParameterCard({ parameter, unit, readings, history, kop 
     const [fullscreen, setFullscreen] = useState(false);
     const closeFullscreen = useCallback(() => setFullscreen(false), []);
 
-    // Kalau user memilih rentang waktu yang tidak punya data
+    // If user choose time range that have no data
     if (n === 0) {
         return (
             <div className="bg-white rounded-2xl p-6 shadow-sm">

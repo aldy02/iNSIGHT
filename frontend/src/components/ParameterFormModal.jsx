@@ -276,7 +276,7 @@ function ParameterFormModalContent({
     </span>
   );
 
-  // Success (setelah tambah/edit berhasil)
+  // Success (after add/edit success)
   if (successView) {
     return (
       <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-9999 p-4">
@@ -377,13 +377,12 @@ function ParameterFormModalContent({
           <Field
             label="Nama Parameter"
             error={errors.parameter}
-            hint={isEdit ? 'Nama parameter tidak bisa diubah di sini. Untuk parameter lain, klik ikon edit pada barisnya' : undefined}
+            hint={isEdit ? 'Mengubah nama hanya berlaku untuk parameter di unit ini.' : undefined}
           >
             <input
               type="text"
               value={form.parameter}
               onChange={(e) => set({ parameter: e.target.value })}
-              disabled={isEdit}
               maxLength={100}
               placeholder="Contoh: PH"
               className={inputClass}

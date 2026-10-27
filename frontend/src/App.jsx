@@ -16,7 +16,8 @@ import LayoutWrapper from './components/LayoutWrapper';
 import ProtectedRoute from './components/ProtectedRoute';
 import NotFound from './pages/NotFound';
 import FormParameter from './pages/FormParameter';
-import Summary from './pages/Summary';
+import Report from './pages/Report';
+import Perbandingan from './pages/Perbandingan';
 
 const router = createBrowserRouter(
   createRoutesFromElements(
@@ -41,7 +42,8 @@ const router = createBrowserRouter(
           <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
             <Route path="/upload" element={<FormUpload />} />
             <Route path="/parameter" element={<FormParameter />} />
-            <Route path="/summary" element={<Summary />} />
+            <Route path="/report" element={<Report />} />
+            <Route path="/perbandingan" element={<Perbandingan />} />
           </Route>
         </Route>
       </Route>

@@ -7,32 +7,35 @@ const INK = '#1B2559';
 const MUTED = '#8292AA';
 const LINE = '#E2E8F0';
 
+const PER_PAGE = 3; // jumlah parameter per halaman
+const CHART_H = 75; // tinggi chart, kecilkan lagi (misal 50) kalau halaman 1 masih jadi 2 parameter
+
 const s = StyleSheet.create({
-  page: { paddingTop: 32, paddingHorizontal: 32, paddingBottom: 60, fontSize: 9, fontFamily: 'Helvetica', color: INK },
-  title: { fontSize: 22, fontFamily: 'Helvetica-Bold', marginTop: 8 },
-  intro: { fontSize: 10.5, marginTop: 6, marginBottom: 14, lineHeight: 1.4 },
+  page: { paddingTop: 24, paddingHorizontal: 32, paddingBottom: 52, fontSize: 9, fontFamily: 'Helvetica', color: INK },
+  title: { fontSize: 18, fontFamily: 'Helvetica-Bold', marginTop: 0 },
+  intro: { fontSize: 10, marginTop: 3, marginBottom: 4, lineHeight: 1.3 },
   bold: { fontFamily: 'Helvetica-Bold' },
-  category: { fontSize: 13, fontFamily: 'Helvetica-Bold', paddingBottom: 4, borderBottomWidth: 0.7, borderBottomColor: LINE, marginTop: 10, marginBottom: 8 },
-  group: { fontSize: 11, fontFamily: 'Helvetica-Bold', marginBottom: 6, marginTop: 2 },
+  category: { fontSize: 12, fontFamily: 'Helvetica-Bold', paddingBottom: 3, borderBottomWidth: 0.7, borderBottomColor: LINE, marginTop: 4, marginBottom: 4 },
+  group: { fontSize: 10.5, fontFamily: 'Helvetica-Bold', marginBottom: 3, marginTop: 0 },
 
   // Card box
   card: { borderLeftWidth: 0.7, borderRightWidth: 0.7, borderColor: LINE },
   cardFirst: { borderTopWidth: 0.7, borderTopLeftRadius: 6, borderTopRightRadius: 6 },
   cardNext: { borderTopWidth: 0.5 },
-  cardLast: { borderBottomWidth: 0.7, borderBottomLeftRadius: 6, borderBottomRightRadius: 6, marginBottom: 10 },
+  cardLast: { borderBottomWidth: 0.7, borderBottomLeftRadius: 6, borderBottomRightRadius: 6, marginBottom: 6 },
 
-  unitTitle: { fontSize: 10, fontFamily: 'Helvetica-Bold', paddingHorizontal: 10, paddingTop: 10, paddingBottom: 0 },
-  param: { paddingHorizontal: 10, paddingTop: 10, paddingBottom: 14 },
+  unitTitle: { fontSize: 10, fontFamily: 'Helvetica-Bold', paddingHorizontal: 10, paddingTop: 6, paddingBottom: 0 },
+  param: { paddingHorizontal: 10, paddingTop: 6, paddingBottom: 8 },
   paramName: { fontSize: 10, fontFamily: 'Helvetica-Bold' },
-  kop: { fontSize: 8, color: MUTED, marginTop: 5, marginBottom: 10 },
-  chartBox: { borderWidth: 0.7, borderColor: LINE, borderRadius: 4, paddingHorizontal: 6, paddingTop: 10, paddingBottom: 6 },
-  empty: { fontSize: 8, color: MUTED, textAlign: 'center', paddingVertical: 28 },
-  statsRow: { flexDirection: 'row', marginTop: 10 },
-  stat: { flex: 1, borderWidth: 0.7, borderColor: LINE, borderRadius: 4, paddingHorizontal: 8, paddingVertical: 6, marginRight: 6 },
+  kop: { fontSize: 8, color: MUTED, marginTop: 3, marginBottom: 5 },
+  chartBox: { borderWidth: 0.7, borderColor: LINE, borderRadius: 4, paddingHorizontal: 6, paddingTop: 6, paddingBottom: 3 },
+  empty: { fontSize: 8, color: MUTED, textAlign: 'center', paddingVertical: 20 },
+  statsRow: { flexDirection: 'row', marginTop: 6 },
+  stat: { flex: 1, borderWidth: 0.7, borderColor: LINE, borderRadius: 4, paddingHorizontal: 8, paddingVertical: 3, marginRight: 6 },
   statLast: { marginRight: 0 },
   statLabel: { fontSize: 7, color: MUTED },
-  statValue: { fontSize: 9, fontFamily: 'Helvetica-Bold', marginTop: 2 },
-  summary: { marginTop: 12, fontSize: 9, lineHeight: 1.6 },
+  statValue: { fontSize: 9, fontFamily: 'Helvetica-Bold', marginTop: 1 },
+  summary: { marginTop: 6, fontSize: 9, lineHeight: 1.4 },
 
   // Footer
   footer: {
@@ -77,7 +80,7 @@ function ParamBlock({ p, title, first, last }) {
 
         <View style={s.chartBox}>
           {p.stats ? (
-            <PdfLineChart id={p.key.replace(/[^a-zA-Z0-9]/g, '-')} data={p.data} kop={p.kop} />
+            <PdfLineChart id={p.key.replace(/[^a-zA-Z0-9]/g, '-')} data={p.data} kop={p.kop} height={CHART_H} />
           ) : (
             <Text style={s.empty}>Belum ada data pada periode ini</Text>
           )}
@@ -125,42 +128,55 @@ function buildBlocks(report) {
   return blocks;
 }
 
+const chunk = (arr, size) => {
+  const out = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+};
+
 const formatPrinted = (d = new Date()) =>
   d.toLocaleString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
 export default function ReportPdf({ report }) {
   const printedAt = report.printedAt ?? formatPrinted();
+  const pages = chunk(buildBlocks(report), PER_PAGE);
 
   return (
     <Document title={`Laporan ${report.plantName}`} author="iNSIGHT - Pupuk Kaltim">
-      <Page size="A4" style={s.page}>
-        <Text style={s.title}>Water Quality</Text>
-        <Text style={s.intro}>
-          {'Berikut merupakan kualitas air Utilitas '}
-          <Text style={s.bold}>{report.plantName}</Text>
-          {' pada '}
-          <Text style={s.bold}>{report.periodLabel}</Text>
-          {'.'}
-        </Text>
+      {pages.map((blocks, pageIdx) => (
+        <Page key={pageIdx} size="A4" style={s.page}>
+          {pageIdx === 0 && (
+            <>
+              <Text style={s.title}>Water Quality</Text>
+              <Text style={s.intro}>
+                {'Berikut merupakan kualitas air Utilitas '}
+                <Text style={s.bold}>{report.plantName}</Text>
+                {' pada '}
+                <Text style={s.bold}>{report.periodLabel}</Text>
+                {'.'}
+              </Text>
+            </>
+          )}
 
-        {buildBlocks(report).map((b) => {
-          const block = <ParamBlock p={b.p} title={b.unitTitle} first={b.first} last={b.last} />;
-          if (!b.cat && !b.group) return <View key={b.key}>{block}</View>;
-          return (
-            <View key={b.key} wrap={false}>
-              {b.cat && <Text style={s.category}>{b.cat.title}</Text>}
-              {b.group && <Text style={s.group}>{b.group.title}</Text>}
-              {block}
-            </View>
-          );
-        })}
+          {blocks.map((b) => {
+            const block = <ParamBlock p={b.p} title={b.unitTitle} first={b.first} last={b.last} />;
+            if (!b.cat && !b.group) return <View key={b.key}>{block}</View>;
+            return (
+              <View key={b.key} wrap={false}>
+                {b.cat && <Text style={s.category}>{b.cat.title}</Text>}
+                {b.group && <Text style={s.group}>{b.group.title}</Text>}
+                {block}
+              </View>
+            );
+          })}
 
-        <View style={s.footer} fixed>
-          <Image src={logo} style={s.footerLogo} />
-          <Text style={s.footerText}>{`iNSIGHT - Pupuk Kaltim | Dept. PPE | ${report.plantName} | Dicetak ${printedAt}`}</Text>
-          <Text style={s.footerPage} render={({ pageNumber, totalPages }) => `Halaman ${pageNumber} / ${totalPages}`} />
-        </View>
-      </Page>
+          <View style={s.footer} fixed>
+            <Image src={logo} style={s.footerLogo} />
+            <Text style={s.footerText}>{`iNSIGHT - Pupuk Kaltim | Dept. PPE | ${report.plantName} | Dicetak ${printedAt}`}</Text>
+            <Text style={s.footerPage} render={({ pageNumber, totalPages }) => `Halaman ${pageNumber} / ${totalPages}`} />
+          </View>
+        </Page>
+      ))}
     </Document>
   );
 }

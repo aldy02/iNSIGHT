@@ -1,12 +1,12 @@
+const { QueryTypes, Op } = require('sequelize');
 const { sequelize, Plant, Area, MainCategory, SubCategory, Unit, Parameter, KopParameter, DailyReading } = require('../models');
-const { Op } = require('sequelize');
 
-// Ubah kategori utama jadi slug
+// Change main category to slug
 function toSlug(str) {
   return str.toLowerCase().trim().replace(/\s+/g, '-');
 }
 
-// Grouping per sub kategori, diatur PER PABRIK (kode pabrik -> daftar kategori utama).
+// Grouping per sub category per plant (plant code => main category list)
 const GROUP_PER_SUBCATEGORY = {
   P6: ['Boiler Water'],
 };
@@ -45,21 +45,58 @@ exports.getStructure = async (req, res) => {
       }],
     });
 
+    // Unit + parameter in this category from souce column or active kop
+    const allUnitIds = subCategories.flatMap((s) => s.Units.map((u) => u.id));
+    const points = allUnitIds.length
+      ? await sequelize.query(
+          `SELECT pts.unit_id, pts.parameter_id, p.nama, k.satuan
+             FROM (SELECT unit_id, parameter_id FROM source_columns
+                   UNION
+                   SELECT unit_id, parameter_id FROM kop_parameters WHERE is_active = 1) pts
+             JOIN parameters p ON p.id = pts.parameter_id
+             LEFT JOIN kop_parameters k
+               ON k.unit_id = pts.unit_id AND k.parameter_id = pts.parameter_id AND k.is_active = 1
+            WHERE pts.unit_id IN (:unitIds)
+            ORDER BY p.nama`,
+          { replacements: { unitIds: allUnitIds }, type: QueryTypes.SELECT },
+        )
+      : [];
+
     const subCategoriesData = subCategories.map((sub) => {
       const parameterMap = new Map();
+      const unitIdSet = new Set(sub.Units.map((u) => u.id));
+
+      // List parameter + unitIds (unit where the parameter exist)
+      points
+        .filter((pt) => unitIdSet.has(pt.unit_id))
+        .forEach((pt) => {
+          const pid = String(pt.parameter_id);
+          const existing = parameterMap.get(pid);
+          if (existing) {
+            existing.unitIds.push(String(pt.unit_id));
+            if (!existing.satuan && pt.satuan) existing.satuan = pt.satuan;
+          } else {
+            parameterMap.set(pid, {
+              id: pid,
+              nama: pt.nama,
+              satuan: pt.satuan || '',
+              unitIds: [String(pt.unit_id)],
+            });
+          }
+        });
 
       const units = sub.Units.map((u) => {
         const kop = {};
         u.KopParameters.forEach((kp) => {
-          const p = kp.Parameter;
-          const pid = String(p.id);
-          parameterMap.set(pid, { id: pid, nama: p.nama, satuan: kp.satuan || '' });
+          const pid = String(kp.Parameter.id);
           kop[pid] = {
             min: kp.min_value != null ? parseFloat(kp.min_value) : null,
             max: kp.max_value != null ? parseFloat(kp.max_value) : null,
             minInclusive: kp.min_inclusive,
             maxInclusive: kp.max_inclusive,
           };
+          const entry = parameterMap.get(pid);
+          if (entry && !entry.satuan && kp.satuan) entry.satuan = kp.satuan;
         });
         return { id: String(u.id), nama: u.nama, kop };
       });
@@ -73,7 +110,7 @@ exports.getStructure = async (req, res) => {
       };
     });
 
-    // Implementasi aturan grouping (per pabrik)
+    // Implement grouping rule per plant
     const groupedCategories = GROUP_PER_SUBCATEGORY[plant.kode?.toUpperCase()] || [];
     const groups = groupedCategories.includes(mainCategory.nama)
       ? subCategoriesData.map((sub) => ({ subCategories: [sub] }))
@@ -90,7 +127,7 @@ exports.getStructure = async (req, res) => {
   }
 };
 
-// Get data aktual harian
+// Get daily actual data
 exports.getReadings = async (req, res) => {
   try {
     const { unitId, parameterId, startDate, endDate } = req.query;

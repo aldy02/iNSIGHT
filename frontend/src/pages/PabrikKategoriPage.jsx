@@ -14,10 +14,10 @@ const RANGE_OPTIONS = [
   { label: '3 Bulan', days: 90 },
 ];
 
-// Batas paling awal data history yang diambil untuk digeser di grafik
+// The earliest limit of historical data retrieved for shifting on the chart
 const HISTORY_START = '2020-01-01';
 
-// Hitung status
+// Count status
 function computeStatus(nilai, kop) {
   if (!kop || nilai == null) return 'no_kop';
   const { min, max, minInclusive = true, maxInclusive = true } = kop;
@@ -43,10 +43,46 @@ function rangeToDates(activeRange) {
   return { startDate: fmt(start), endDate: fmt(end) };
 }
 
+// Lock: `${kode pabrik}/${slug kategori}` (lower case)
+// If there unit that not in the list, they will be showed in the back
+const UNIT_ORDER = {
+  'p5/desalination': [
+    'UF Tank',
+    'SWRO A',
+    'SWRO B',
+    'BWRO A',
+    'BWRO B',
+    'Raw Condensate Tank',
+  ],
+};
+
+function sortUnits(units, order) {
+  if (!order) return units; // If no order => order default from api
+  const list = order.map((n) => n.toLowerCase());
+  const rank = (u) => {
+    const i = list.indexOf(String(u.nama).trim().toLowerCase());
+    return i === -1 ? list.length : i;
+  };
+  return units
+    .map((u, i) => ({ u, i }))
+    .sort((a, b) => rank(a.u) - rank(b.u) || a.i - b.i)
+    .map((x) => x.u);
+}
+
+function sortStructure(structure, order) {
+  return {
+    ...structure,
+    groups: structure.groups.map((g) => ({
+      ...g,
+      subCategories: g.subCategories.map((s) => ({ ...s, units: sortUnits(s.units, order) })),
+    })),
+  };
+}
+
 function GroupSection({ kategoriSlug, kategoriLabel, group, activeRange }) {
   const subCategories = group.subCategories;
 
-  // Kalau Sub kategori "-" maka menampilkan nama kategori (Steam, Boiler Water, dst.)
+  // If sub category "-" then show main category
   const subLabel = (sub) => (sub.nama === '-' ? kategoriLabel : sub.nama);
 
   const groupKey = subCategories[0].slug;
@@ -67,10 +103,8 @@ function GroupSection({ kategoriSlug, kategoriLabel, group, activeRange }) {
   const [activeUnitId, setActiveUnitId] = useState(initialUnit.id);
   const activeUnit = activeSub.units.find((unit) => unit.id === activeUnitId) || activeSub.units[0];
 
-  // Hanya parameter yang punya KOP di unit aktif.
-  // Kalau unit belum punya KOP sama sekali, tampilkan semua parameter sub kategori.
-  const unitParams = activeSub.parameters.filter((p) => activeUnit.kop?.[p.id]);
-  const visibleParams = unitParams.length > 0 ? unitParams : activeSub.parameters;
+  // Only registered parameter in active unit (with or without kop)
+  const visibleParams = activeSub.parameters.filter((p) => p.unitIds?.includes(activeUnit.id));
 
   const showSubTabs = subCategories.length > 1;
   const showUnitTabs = activeSub.units.length > 1;
@@ -124,8 +158,7 @@ function GroupSection({ kategoriSlug, kategoriLabel, group, activeRange }) {
       .finally(() => setLoadingReadings(false));
   }, [activeUnit?.id, activeSub.slug, activeRange.type, activeRange.days, activeRange.start, activeRange.end]);
 
-  // History lengkap (tanpa filter rentang) untuk geser grafik melewati filter.
-  // Dimuat di belakang layar, tidak memblokir tampilan, dan tidak diulang saat filter rentang berubah.
+  // Full history (without filter range) for chart to drag
   useEffect(() => {
     if (!activeUnit) return undefined;
     let cancelled = false;
@@ -147,7 +180,7 @@ function GroupSection({ kategoriSlug, kategoriLabel, group, activeRange }) {
         setHistoryByParam(map);
       })
       .catch(() => {
-        // Kalau gagal, grafik tetap jalan memakai data terfilter saja
+        // If fail, chart still run with only filtered data
       });
 
     return () => { cancelled = true; };
@@ -170,7 +203,7 @@ function GroupSection({ kategoriSlug, kategoriLabel, group, activeRange }) {
     })
     .sort((a, b) => (a.tanggal < b.tanggal ? 1 : -1));
 
-  // Kalau unit "-" dan sub kategori juga "-", kolom ini merujuk ke kategori
+  // If unit "-" and sub category also "-", this column will point to category
   const unitColumnLabel =
     activeUnit.nama === '-'
       ? (activeSub.nama === '-' ? 'Kategori' : 'Sub Kategori')
@@ -227,6 +260,12 @@ function GroupSection({ kategoriSlug, kategoriLabel, group, activeRange }) {
         </div>
       ) : (
         <>
+          {visibleParams.length === 0 && (
+            <p className="text-sm text-[#8292AA] py-8 text-center">
+              Belum ada parameter untuk unit ini.
+            </p>
+          )}
+
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {visibleParams.map((param, idx) => {
               const isLastOdd =
@@ -272,23 +311,24 @@ function GroupSection({ kategoriSlug, kategoriLabel, group, activeRange }) {
   );
 }
 
-// Kategori Content
-function KategoriContent({ plantId, kategoriSlug }) {
+// Category Content
+function KategoriContent({ plantId, kode, kategoriSlug }) {
   const [activeRange, setActiveRange] = useState({ type: 'preset', days: 30 });
   const [customValue, setCustomValue] = useState(null);
   const [searchParams] = useSearchParams();
 
-  // Struktur (Sub Kategori/Unit/Parameter/KOP)
+  // Structure (Sub Kategori/Unit/Parameter/KOP)
   const [structure, setStructure] = useState(null);
   const [loadingStructure, setLoadingStructure] = useState(true);
 
   useEffect(() => {
     setLoadingStructure(true);
+    const order = UNIT_ORDER[`${kode}/${kategoriSlug}`.toLowerCase()];
     getStructure(plantId, kategoriSlug)
-      .then(setStructure)
+      .then((data) => setStructure(sortStructure(data, order)))
       .catch(() => setStructure(null))
       .finally(() => setLoadingStructure(false));
-  }, [plantId, kategoriSlug]);
+  }, [plantId, kode, kategoriSlug]);
 
   if (loadingStructure) {
     return (
@@ -400,7 +440,7 @@ export default function PabrikKategoriPage() {
   }
 
   return plantId ? (
-    <KategoriContent plantId={plantId} kategoriSlug={kategori} />
+    <KategoriContent plantId={plantId} kode={kode} kategoriSlug={kategori} />
   ) : (
     <PlaceholderContent kode={kode} kategori={kategori} />
   );

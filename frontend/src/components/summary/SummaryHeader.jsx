@@ -24,7 +24,7 @@ export default function SummaryHeader({
           type="button"
           onClick={onSave}
           disabled={!canSave}
-          className="flex items-center gap-2 px-5 py-2.5 bg-[#003399] hover:bg-[#002b80] disabled:bg-slate-200 disabled:text-[#8292AA] disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg transition-colors"
+          className="flex items-center gap-2 px-5 py-2.5 bg-[#F75807] hover:bg-[#df4e04] disabled:bg-slate-200 disabled:text-[#8292AA] disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg transition-colors"
         >
           {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
           {saving ? 'Menyimpan...' : 'Simpan'}
