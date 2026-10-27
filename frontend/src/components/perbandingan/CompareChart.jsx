@@ -4,10 +4,10 @@ import MultiSeriesChart from './MultiSeriesChart';
 import FullscreenPanel from './FullscreenPanel';
 
 // Title, fullscreen button, grafik
-export default function CompareChart({ title, series, data, history, kop, mixedKop, satuan }) {
+export default function CompareChart({ title, series, data, history, kop, mixedKop, satuan, rangeMs }) {
   const [fullscreen, setFullscreen] = useState(false);
   const closeFullscreen = useCallback(() => setFullscreen(false), []);
-  const chartProps = { series, data, history, kop, mixedKop, satuan };
+  const chartProps = { series, data, history, kop, mixedKop, satuan, rangeMs };
 
   return (
     <div>

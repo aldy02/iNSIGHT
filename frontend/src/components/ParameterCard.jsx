@@ -16,13 +16,13 @@ import {
 } from 'recharts';
 import { formatKop } from '../tests/data';
 
-const ZOOM_STEP = 0.8; // Evertytime scroll, range Y zoom in 80% or zoom out 125%
-const MIN_SPAN_RATIO = 0.02; // Zoom in max 2% from default range
-const MAX_ZOOM_OUT = 3; // Zoom out max 3x from defualt range
+const ZOOM_STEP = 0.8; // Every scroll, Y range zooms in to 80% or zooms out by 125%
+const MIN_SPAN_RATIO = 0.02; // Zoom in max 2% of default range
+const MAX_ZOOM_OUT = 3; // Zoom out max 3x of default range
 const PLOT_TOP = 10;
 const PLOT_BOTTOM = 30;
 const PLOT_RIGHT = 10;
-const MIN_TICK_PX = 42; // Minimum distance per x label or x tick for space
+const MIN_TICK_PX = 42; // Minimum distance per X label (tick) for spacing
 const TIME_KEY = 'tanggal';
 const toMs = (r) => new Date(r[TIME_KEY]).getTime();
 
@@ -34,7 +34,7 @@ const niceStep = (raw) => {
     return nf * 10 ** exp;
 };
 
-// Makesure y tick consistant
+// Make sure Y ticks are consistent
 const buildYTicks = (min, max, target = 5) => {
     const span = max - min;
     if (!(span > 0)) return { ticks: [min], decimals: 0 };
@@ -49,16 +49,16 @@ const buildYTicks = (min, max, target = 5) => {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-// Option for x (day) tick range
+// Options for X (day) tick step
 const X_STEPS = [1, 2, 3, 4, 5, 7, 10, 14, 30, 60];
 
-// Pick max tick, ex: max tick 18 so 1 or 2 week time frame gonna be using 1 day i tick
+// Pick the smallest step whose tick count fits maxTicks
 const pickStepDays = (spanMs, maxTicks) => {
     const days = Math.max(1, spanMs / DAY_MS);
     return X_STEPS.find((s) => days / s <= maxTicks) ?? X_STEPS[X_STEPS.length - 1];
 };
 
-// Build x tick
+// Build X ticks
 const buildXTicks = (data, stepDays = 3) => {
     if (!data.length) return [];
     const start = toMs(data[0]);
@@ -129,12 +129,13 @@ function StatsGrid({ current, highest, lowest, kop, satuan, fmt, className = '' 
     );
 }
 
-function ParameterChart({ parameter, unit, data, history, kop, fmt, gradId, fill = false }) {
+function ParameterChart({ parameter, unit, data, history, kop, fmt, gradId, fill = false, rangeMs }) {
     const source = history && history.length ? history : data;
 
     const baseStart = toMs(data[0]);
     const baseEnd = toMs(data[data.length - 1]);
-    const span = Math.max(1, baseEnd - baseStart);
+    // Window width = the selected range (ex. 7 days = 6 days difference, 7 daily points),
+    const span = Math.max(1, rangeMs ?? 0, baseEnd - baseStart);
     const minT = toMs(source[0]);
     const maxT = toMs(source[source.length - 1]);
 
@@ -156,21 +157,20 @@ function ParameterChart({ parameter, unit, data, history, kop, fmt, gradId, fill
         return () => ro.disconnect();
     }, []);
 
-    // When filter or data change, reset zoom and position move
+    // When filter or data change, reset zoom and pan position
     useEffect(() => {
         setYRange(null);
         setWinStart(null);
     }, [data]);
 
     const isZoomed = !!yRange;
-    // When fullscreen move x always acitve, when card only after y zoom
+    // In fullscreen X pan is always active, in card only after Y zoom
     const canPan = fill || isZoomed;
     const panned = canPan && winStart != null;
 
     const clampStart = (s) => Math.max(minT, Math.min(s, Math.max(minT, maxT - span)));
 
-    // Data view
-    const windowStart = panned ? clampStart(winStart) : baseStart;
+    const windowStart = panned ? clampStart(winStart) : clampStart(baseEnd - span);
     const visibleData = panned
         ? source.filter((r) => {
               const t = toMs(r);
@@ -180,7 +180,7 @@ function ParameterChart({ parameter, unit, data, history, kop, fmt, gradId, fill
 
     // Y Scale
     const maxOf = (arr) => Math.max(...arr.map((r) => r.nilai));
-    // 15% Space from highest point
+    // 15% space above the highest point
     const baseMax = Math.max(maxOf(data), kop?.max ?? -Infinity) * 1.15 || 1;
     const yLimit = Math.max(baseMax, Math.max(maxOf(source), kop?.max ?? -Infinity) * 1.15 || 1);
 
@@ -190,7 +190,7 @@ function ParameterChart({ parameter, unit, data, history, kop, fmt, gradId, fill
     const fullMax = Math.max(baseMax, visibleMax);
     const curY = yRange ?? { min: 0, max: fullMax };
 
-    // Y axis lowest value always 0
+    // Y axis lowest value is always 0
     const maxSpan = fullMax * MAX_ZOOM_OUT;
     const yLo = 0;
     const yHi = Math.max(yLimit, maxSpan);
@@ -209,11 +209,10 @@ function ParameterChart({ parameter, unit, data, history, kop, fmt, gradId, fill
     const yAxisWidthRef = useRef(yAxisWidth);
     yAxisWidthRef.current = yAxisWidth;
 
-    const visibleSpan = visibleData.length
-        ? toMs(visibleData[visibleData.length - 1]) - toMs(visibleData[0])
-        : 0;
+    // X ticks use the window width, not the gap between data points
+    const visibleSpan = visibleData.length ? Math.max(span, 1) : 0;
 
-    // Area plot X = chart width minus Y-axis, right margin, and X Axis padding (12 + 12)
+    // X plot area = chart width minus Y-axis, right margin, and XAxis padding (12 + 12)
     const plotWidth = chartWidth - yAxisWidth - PLOT_RIGHT - 24;
     const maxXTicks = chartWidth > 0
         ? Math.max(2, Math.floor(plotWidth / MIN_TICK_PX))
@@ -238,7 +237,7 @@ function ParameterChart({ parameter, unit, data, history, kop, fmt, gradId, fill
         setYRange(clampY(newMin, newSpan));
     };
 
-    // Ctrl/cmd + scroll = only zoom y
+    // Ctrl/cmd + scroll = zoom Y only
     useEffect(() => {
         const el = chartRef.current;
         if (!el) return undefined;
@@ -275,12 +274,12 @@ function ParameterChart({ parameter, unit, data, history, kop, fmt, gradId, fill
             const el = chartRef.current;
             if (!d || !el) return;
 
-            // X drag right, time back
+            // Drag right = go back in time
             const plotW = Math.max(1, el.clientWidth - yAxisWidthRef.current - PLOT_RIGHT);
             const shiftMs = -((e.clientX - d.startX) / plotW) * span;
             setWinStart(clampStart(d.startWin + shiftMs));
 
-            // Y move top bottom, only when y is zooming
+            // Move up/down only when Y is zoomed
             if (d.hasY) {
                 const plotH = Math.max(1, el.clientHeight - PLOT_TOP - PLOT_BOTTOM);
                 const shiftY = ((e.clientY - d.startY) / plotH) * d.ySpan;
@@ -315,9 +314,8 @@ function ParameterChart({ parameter, unit, data, history, kop, fmt, gradId, fill
 
     return (
         <div className={fill ? 'flex flex-col h-full min-h-0' : ''}>
-            {/* Legenda */}
+            {/* Legend */}
             <div className={`flex items-center justify-between text-xs text-[#8292AA] ${fill ? 'mb-2 mt-3' : 'mb-4 mt-6'} flex-wrap gap-y-2`}>
-                {/* Kontainer Aktual, Batas Atas, Batas Bawah */}
                 <div className="flex items-center gap-5 flex-wrap">
                     <span className="flex items-center gap-1.5">
                         <span className="w-4 h-0.5 bg-[#003399] inline-block rounded" /> Aktual
@@ -334,7 +332,6 @@ function ParameterChart({ parameter, unit, data, history, kop, fmt, gradId, fill
                     )}
                 </div>
 
-                {/* Kontainer Titik Tertinggi */}
                 {highest && (
                     <div className="flex items-center gap-1.5">
                         <span className="w-2 h-2 rounded-full bg-red-500 inline-block" /> Titik Tertinggi &bull; {highest.label}
@@ -342,7 +339,7 @@ function ParameterChart({ parameter, unit, data, history, kop, fmt, gradId, fill
                 )}
             </div>
 
-            {/* Petunjuk zoom */}
+            {/* Zoom hint */}
             <div className="flex items-center justify-between gap-3 mb-2 min-h-7">
                 <span className="text-[11px] text-[#8292AA]">
                     Zoom: Ctrl + Scroll{canPan ? ' • Geser: klik tahan lalu drag' : ''}
@@ -448,18 +445,18 @@ function ParameterChart({ parameter, unit, data, history, kop, fmt, gradId, fill
     );
 }
 
-function FullscreenChart({ open, onClose, parameter, unit, data, history, kop, satuan, fmt, stats }) {
+function FullscreenChart({ open, onClose, parameter, unit, data, history, kop, satuan, fmt, stats, rangeMs }) {
     const rootRef = useRef(null);
 
     useEffect(() => {
         if (!open) return undefined;
         const el = rootRef.current;
 
-        // Exit from fullscren can use esc
+        // Exit from fullscreen can use Esc
         const onFsChange = () => {
             if (!document.fullscreenElement) onClose();
         };
-        // If fullscreen browser not active
+        // If browser fullscreen is not active
         const onKey = (e) => e.key === 'Escape' && onClose();
 
         document.addEventListener('fullscreenchange', onFsChange);
@@ -510,6 +507,7 @@ function FullscreenChart({ open, onClose, parameter, unit, data, history, kop, s
                     kop={kop}
                     fmt={fmt}
                     gradId={`fill-full-${unit.id}-${parameter.id}`}
+                    rangeMs={rangeMs}
                     fill
                 />
             </div>
@@ -518,7 +516,7 @@ function FullscreenChart({ open, onClose, parameter, unit, data, history, kop, s
     );
 }
 
-export default function ParameterCard({ parameter, unit, readings, history, kop }) {
+export default function ParameterCard({ parameter, unit, readings, history, kop, rangeMs }) {
     const satuan = parameter.satuan ?? '';
     const data = readings || [];
     const n = data.length;
@@ -526,7 +524,7 @@ export default function ParameterCard({ parameter, unit, readings, history, kop 
     const [fullscreen, setFullscreen] = useState(false);
     const closeFullscreen = useCallback(() => setFullscreen(false), []);
 
-    // If user choose time range that have no data
+    // If the selected time range has no data
     if (n === 0) {
         return (
             <div className="bg-white rounded-2xl p-6 shadow-sm">
@@ -571,6 +569,7 @@ export default function ParameterCard({ parameter, unit, readings, history, kop 
                 kop={kop}
                 fmt={fmt}
                 gradId={`fill-${unit.id}-${parameter.id}`}
+                rangeMs={rangeMs}
             />
 
             <FullscreenChart
@@ -584,6 +583,7 @@ export default function ParameterCard({ parameter, unit, readings, history, kop 
                 satuan={satuan}
                 fmt={fmt}
                 stats={stats}
+                rangeMs={rangeMs}
             />
         </div>
     );

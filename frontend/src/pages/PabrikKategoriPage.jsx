@@ -14,6 +14,8 @@ const RANGE_OPTIONS = [
   { label: '3 Bulan', days: 90 },
 ];
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 // The earliest limit of historical data retrieved for shifting on the chart
 const HISTORY_START = '2020-01-01';
 
@@ -41,6 +43,13 @@ function rangeToDates(activeRange) {
   start.setDate(start.getDate() - (activeRange.days - 1));
   const fmt = (d) => d.toISOString().slice(0, 10);
   return { startDate: fmt(start), endDate: fmt(end) };
+}
+
+// Width of the selected range (ms). Used as the width of the chart's sliding window.
+function rangeToMs(activeRange) {
+  const { startDate, endDate } = rangeToDates(activeRange);
+  const diff = new Date(endDate) - new Date(startDate) + DAY_MS;
+  return Number.isFinite(diff) ? Math.max(0, diff) : 0;
 }
 
 // Lock: `${kode pabrik}/${slug kategori}` (lower case)
@@ -114,6 +123,9 @@ function GroupSection({ kategoriSlug, kategoriLabel, group, activeRange }) {
   const [loadingReadings, setLoadingReadings] = useState(true);
   const [showTable, setShowTable] = useState(true);
 
+  // Width of the chart sliding window, following the selected range (rather than the interval between data points)
+  const rangeMs = rangeToMs(activeRange);
+
   const handleSelectSub = (slug) => {
     const sub = subCategories.find((s) => s.slug === slug);
     setActiveSubSlug(slug);
@@ -179,8 +191,9 @@ function GroupSection({ kategoriSlug, kategoriLabel, group, activeRange }) {
         results.forEach((r) => { map[r.paramId] = r.data; });
         setHistoryByParam(map);
       })
-      .catch(() => {
+      .catch((e) => {
         // If fail, chart still run with only filtered data
+        console.error('History gagal dimuat:', e);
       });
 
     return () => { cancelled = true; };
@@ -281,6 +294,7 @@ function GroupSection({ kategoriSlug, kategoriLabel, group, activeRange }) {
                     history={historyByParam[param.id]}
                     kop={activeUnit.kop?.[param.id]}
                     satuan={param.satuan}
+                    rangeMs={rangeMs}
                   />
                 </div>
               );

@@ -23,14 +23,14 @@ const scaleMax = (m) => {
     return Number.isFinite(v) && v > 0 ? v : 1;
 };
 
-export default function MultiSeriesChart({ series, data, history, kop, mixedKop = false, satuan, fill = false }) {
+export default function MultiSeriesChart({ series, data, history, kop, mixedKop = false, satuan, fill = false, rangeMs }) {
     const source = history && history.length ? history : data;
     const fmt = (v) => (v == null ? '-' : `${fmtNum(v)}${satuan ? ` ${satuan}` : ''}`);
 
-    // time length window: current time range
+    // Window width = the selected range (ex. 7 days = 6 days difference, 7 daily points),
     const baseStart = toMs(data[0]);
     const baseEnd = toMs(data[data.length - 1]);
-    const span = Math.max(1, baseEnd - baseStart);
+    const span = Math.max(1, rangeMs ?? 0, baseEnd - baseStart);
     const minT = toMs(source[0]);
     const maxT = toMs(source[source.length - 1]);
 
@@ -40,19 +40,20 @@ export default function MultiSeriesChart({ series, data, history, kop, mixedKop 
     const chartRef = useRef(null);
     const dragRef = useRef(null);
 
-    // Wheen filter or data change, zoom reset and psition move
+    // When filter or data change, reset zoom and pan position
     useEffect(() => {
         setYRange(null);
         setWinStart(null);
     }, [data]);
 
     const isZoomed = !!yRange;
-    const canPan = fill || isZoomed; // Fullscreen can move
+    const canPan = fill || isZoomed; // Fullscreen can always pan
     const panned = canPan && winStart != null;
 
     const clampStart = (s) => Math.max(minT, Math.min(s, Math.max(minT, maxT - span)));
 
-    const windowStart = panned ? clampStart(winStart) : baseStart;
+    // Initial window is right-aligned to the last data point, so it does not jump when drag starts
+    const windowStart = panned ? clampStart(winStart) : clampStart(baseEnd - span);
     const visibleData = panned
         ? source.filter((r) => {
             const t = toMs(r);
@@ -80,12 +81,12 @@ export default function MultiSeriesChart({ series, data, history, kop, mixedKop 
     const fullMax = Math.max(baseMax, visibleMax);
     const curY = yRange ?? { min: 0, max: fullMax };
 
-    // Bottom chart or lowest point of y value always 0, even when zoom
+    // Bottom of Y is always 0, even when zoomed
     const maxSpan = fullMax * MAX_ZOOM_OUT;
     const yLo = 0;
     const yHi = Math.max(yLimit, maxSpan);
 
-    // Highest point from all plant
+    // Highest point from all series
     let highest = null;
     visibleData.forEach((r) =>
         series.forEach((s) => {
@@ -110,7 +111,7 @@ export default function MultiSeriesChart({ series, data, history, kop, mixedKop 
         return { min: m, max: m + ySpan };
     };
 
-    // Zoom y
+    // Zoom Y
     const zoomY = (dir, frac = 0.5) => {
         const ySpan = curY.max - curY.min;
         let newSpan = dir === 'in' ? ySpan * ZOOM_STEP : ySpan / ZOOM_STEP;
@@ -124,7 +125,7 @@ export default function MultiSeriesChart({ series, data, history, kop, mixedKop 
         setYRange(clampY(newMin, newSpan));
     };
 
-    // ctrl/cmd + scroll = zoom y
+    // Ctrl/cmd + scroll = zoom Y
     useEffect(() => {
         const el = chartRef.current;
         if (!el) return undefined;
@@ -161,12 +162,12 @@ export default function MultiSeriesChart({ series, data, history, kop, mixedKop 
             const el = chartRef.current;
             if (!d || !el) return;
 
-            // Right drag, move time back
+            // Drag right = go back in time
             const plotW = Math.max(1, el.clientWidth - yAxisWidthRef.current - PLOT_RIGHT);
             const shiftMs = -((e.clientX - d.startX) / plotW) * span;
             setWinStart(clampStart(d.startWin + shiftMs));
 
-            // Y move bottom and top only when y is zooming
+            // Move up/down only when Y is zoomed
             if (d.hasY) {
                 const plotH = Math.max(1, el.clientHeight - PLOT_TOP - PLOT_BOTTOM);
                 const shiftY = ((e.clientY - d.startY) / plotH) * d.ySpan;
@@ -198,7 +199,7 @@ export default function MultiSeriesChart({ series, data, history, kop, mixedKop 
 
     return (
         <div className={fill ? 'flex flex-col h-full min-h-0' : ''}>
-            {/* Legenda */}
+            {/* Legend */}
             <div className={`flex items-center justify-between text-xs text-[#8292AA] ${fill ? 'mb-2 mt-3' : 'mb-4 mt-4'} flex-wrap gap-x-6 gap-y-2`}>
                 <div className="flex items-center gap-x-5 gap-y-2 flex-wrap">
                     {series.map((s) => (
@@ -227,7 +228,7 @@ export default function MultiSeriesChart({ series, data, history, kop, mixedKop 
                 )}
             </div>
 
-            {/* Petunjuk zoom */}
+            {/* Zoom hint */}
             <div className="flex items-center justify-between gap-3 mb-2 min-h-7">
                 <span className="text-[11px] text-[#8292AA]">
                     Zoom: Ctrl + Scroll

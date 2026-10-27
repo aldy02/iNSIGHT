@@ -296,6 +296,7 @@ export default function Perbandingan() {
   const series = compared.map((c) => ({ key: c.plant.kode, name: c.seriesName, color: c.color }));
 
   const hasData = chartData.length > 0;
+  const rangeMs = hasPeriod ? new Date(endDate) - new Date(startDate) : 0;
   const busy = loading || pendingExpand;
 
   if (metaLoading) {
@@ -407,6 +408,7 @@ export default function Perbandingan() {
                 kop={sharedKop}
                 mixedKop={!sharedKop}
                 satuan={satuan}
+                rangeMs={rangeMs}
               />
             )}
           </div>
