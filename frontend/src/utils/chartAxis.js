@@ -5,6 +5,7 @@ export const MAX_ZOOM_OUT = 3; // Zoom out max 3x from default range
 export const PLOT_TOP = 10;
 export const PLOT_BOTTOM = 30;
 export const PLOT_RIGHT = 10;
+export const MIN_TICK_PX = 42; // Minimum distance per X label (tick) for spacing
 
 const TIME_KEY = 'tanggal';
 export const toMs = (r) => new Date(r[TIME_KEY]).getTime();
@@ -32,25 +33,28 @@ export const buildYTicks = (min, max, target = 5) => {
   return { ticks, decimals };
 };
 
-// Option for x (day) tick range
-const X_STEPS = [1, 2, 3, 5, 7, 10, 14, 30, 60];
+// Option for x (day) tick range (sama dengan ParameterCard)
+const X_STEPS = [1, 2, 3, 4, 5, 7, 10, 14, 30, 60];
 
+// Pick the smallest step whose tick count fits maxTicks
 export const pickStepDays = (spanMs, maxTicks) => {
   const days = Math.max(1, spanMs / DAY_MS);
   return X_STEPS.find((s) => days / s <= maxTicks) ?? X_STEPS[X_STEPS.length - 1];
 };
 
 // Build x tick
-export const buildXTicks = (data, stepDays = 3) => {
+export const buildXTicks = (data, stepDays = 3, minIndexGap = 1) => {
   if (!data.length) return [];
   const start = toMs(data[0]);
   const ticks = [];
   let nextBucket = 0;
-  data.forEach((r) => {
+  let lastIdx = -Infinity;
+  data.forEach((r, i) => {
     const bucket = Math.floor((toMs(r) - start) / (stepDays * DAY_MS));
-    if (bucket >= nextBucket) {
+    if (bucket >= nextBucket && i - lastIdx >= minIndexGap) {
       ticks.push(r.label);
       nextBucket = bucket + 1;
+      lastIdx = i;
     }
   });
   return ticks;

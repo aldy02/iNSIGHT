@@ -12,7 +12,7 @@ import {
     ReferenceDot,
 } from 'recharts';
 import {
-    ZOOM_STEP, MIN_SPAN_RATIO, MAX_ZOOM_OUT, PLOT_TOP, PLOT_BOTTOM, PLOT_RIGHT,
+    ZOOM_STEP, MIN_SPAN_RATIO, MAX_ZOOM_OUT, PLOT_TOP, PLOT_BOTTOM, PLOT_RIGHT, MIN_TICK_PX,
     toMs, buildYTicks, pickStepDays, buildXTicks,
 } from '../../utils/chartAxis';
 import { fmtNum } from '../../utils/summary';
@@ -39,6 +39,18 @@ export default function MultiSeriesChart({ series, data, history, kop, mixedKop 
     const [dragging, setDragging] = useState(false);
     const chartRef = useRef(null);
     const dragRef = useRef(null);
+
+    // Actual chart width, used to determine the number of X-axis ticks
+    const [chartWidth, setChartWidth] = useState(0);
+
+    useEffect(() => {
+        const el = chartRef.current;
+        if (!el) return undefined;
+        setChartWidth(el.clientWidth);
+        const ro = new ResizeObserver(([entry]) => setChartWidth(entry.contentRect.width));
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, []);
 
     // When filter or data change, reset zoom and pan position
     useEffect(() => {
@@ -99,12 +111,30 @@ export default function MultiSeriesChart({ series, data, history, kop, mixedKop 
     const { ticks, decimals } = buildYTicks(curY.min, curY.max, fill ? 8 : 5);
     const tickFmt = (v) => v.toFixed(decimals);
 
-    const visibleSpan = visibleData.length ? toMs(visibleData[visibleData.length - 1]) - toMs(visibleData[0]) : 0;
-    const xTicks = buildXTicks(visibleData, pickStepDays(visibleSpan, fill ? 30 : 18));
-
     const yAxisWidth = Math.max(36, Math.max(...ticks.map((t) => tickFmt(t).length), 1) * 7 + 10);
     const yAxisWidthRef = useRef(yAxisWidth);
     yAxisWidthRef.current = yAxisWidth;
+
+    // X ticks use the window width, not the gap between data points
+    const visibleSpan = visibleData.length ? Math.max(span, 1) : 0;
+
+    // X plot area = chart width minus Y-axis, right margin, and XAxis padding (12 + 12)
+    const plotWidth = chartWidth - yAxisWidth - PLOT_RIGHT - 24;
+    const maxXTicks = chartWidth > 0
+        ? Math.max(2, Math.floor(plotWidth / MIN_TICK_PX))
+        : (fill ? 30 : 18);
+
+    // Width per point data on screen
+    const pxPerPoint = chartWidth > 0
+        ? plotWidth / Math.max(1, visibleData.length - 1)
+        : MIN_TICK_PX;
+    const minIndexGap = Math.max(1, Math.ceil(MIN_TICK_PX / pxPerPoint));
+
+    const xTicks = buildXTicks(
+        visibleData,
+        pickStepDays(visibleSpan, maxXTicks),
+        minIndexGap
+    );
 
     const clampY = (min, ySpan) => {
         const m = Math.max(yLo, Math.min(min, yHi - ySpan));

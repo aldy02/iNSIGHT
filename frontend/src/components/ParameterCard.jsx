@@ -59,16 +59,18 @@ const pickStepDays = (spanMs, maxTicks) => {
 };
 
 // Build X ticks
-const buildXTicks = (data, stepDays = 3) => {
+const buildXTicks = (data, stepDays = 3, minIndexGap = 1) => {
     if (!data.length) return [];
     const start = toMs(data[0]);
     const ticks = [];
     let nextBucket = 0;
-    data.forEach((r) => {
+    let lastIdx = -Infinity;
+    data.forEach((r, i) => {
         const bucket = Math.floor((toMs(r) - start) / (stepDays * DAY_MS));
-        if (bucket >= nextBucket) {
+        if (bucket >= nextBucket && i - lastIdx >= minIndexGap) {
             ticks.push(r.label);
             nextBucket = bucket + 1;
+            lastIdx = i;
         }
     });
     return ticks;
@@ -173,9 +175,9 @@ function ParameterChart({ parameter, unit, data, history, kop, fmt, gradId, fill
     const windowStart = panned ? clampStart(winStart) : clampStart(baseEnd - span);
     const visibleData = panned
         ? source.filter((r) => {
-              const t = toMs(r);
-              return t >= windowStart && t <= windowStart + span;
-          })
+            const t = toMs(r);
+            return t >= windowStart && t <= windowStart + span;
+        })
         : data;
 
     // Y Scale
@@ -217,7 +219,17 @@ function ParameterChart({ parameter, unit, data, history, kop, fmt, gradId, fill
     const maxXTicks = chartWidth > 0
         ? Math.max(2, Math.floor(plotWidth / MIN_TICK_PX))
         : (fill ? 30 : 18);
-    const xTicks = buildXTicks(visibleData, pickStepDays(visibleSpan, maxXTicks));
+    // Lebar per titik data di layar (sumbu X kategorikal = lebar sama per baris)
+    const pxPerPoint = chartWidth > 0
+        ? plotWidth / Math.max(1, visibleData.length - 1)
+        : MIN_TICK_PX;
+    const minIndexGap = Math.max(1, Math.ceil(MIN_TICK_PX / pxPerPoint));
+
+    const xTicks = buildXTicks(
+        visibleData,
+        pickStepDays(visibleSpan, maxXTicks),
+        minIndexGap
+    );
 
     const clampY = (min, ySpan) => {
         const m = Math.max(yLo, Math.min(min, yHi - ySpan));
@@ -463,13 +475,13 @@ function FullscreenChart({ open, onClose, parameter, unit, data, history, kop, s
         window.addEventListener('keydown', onKey);
         const prevOverflow = document.body.style.overflow;
         document.body.style.overflow = 'hidden';
-        if (el?.requestFullscreen) el.requestFullscreen().catch(() => {});
+        if (el?.requestFullscreen) el.requestFullscreen().catch(() => { });
 
         return () => {
             document.removeEventListener('fullscreenchange', onFsChange);
             window.removeEventListener('keydown', onKey);
             document.body.style.overflow = prevOverflow;
-            if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+            if (document.fullscreenElement) document.exitFullscreen().catch(() => { });
         };
     }, [open, onClose]);
 
