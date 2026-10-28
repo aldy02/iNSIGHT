@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Factory,
@@ -9,83 +9,11 @@ import {
   ChevronDown,
   ChevronLeft,
   FileText,
-  ChartSpline 
+  ChartSpline,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import api from '../api/axios'
 import logoPupukKaltim from '../assets/Logo.png';
-
-const PLANTS = [
-  {
-    kode: 'P1A',
-    label: 'Pabrik 1A',
-    subMenu: [
-      { label: 'Desalination', slug: 'desalination' },
-      { label: 'Demineralization', slug: 'demineralization' },
-      { label: 'Boiler Feed Water', slug: 'boiler-feed-water' },
-      { label: 'Boiler Water', slug: 'boiler-water' },
-      { label: 'Steam', slug: 'steam' }
-    ]
-  },
-  {
-    kode: 'P2', label: 'Pabrik 2',
-    subMenu: [
-      { label: 'Desalination', slug: 'desalination' },
-      { label: 'Demineralization', slug: 'demineralization' },
-      { label: 'Boiler Feed Water', slug: 'boiler-feed-water' },
-      { label: 'Boiler Water', slug: 'boiler-water' },
-      { label: 'Steam', slug: 'steam' }
-    ]
-  },
-  {
-    kode: 'P3', label: 'Pabrik 3',
-    subMenu: [
-      { label: 'Desalination', slug: 'desalination' },
-      { label: 'Demineralization', slug: 'demineralization' },
-      { label: 'Boiler Feed Water', slug: 'boiler-feed-water' },
-      { label: 'Boiler Water', slug: 'boiler-water' },
-      { label: 'Steam', slug: 'steam' }
-    ]
-  },
-  {
-    kode: 'P4',
-    label: 'Pabrik 4',
-    subMenu: [
-      { label: 'Desalination', slug: 'desalination' },
-      { label: 'Demineralization', slug: 'demineralization' },
-      { label: 'Boiler Feed Water', slug: 'boiler-feed-water' },
-      { label: 'Boiler Water', slug: 'boiler-water' },
-      { label: 'Steam', slug: 'steam' }
-    ]
-  },
-  {
-    kode: 'P5', label: 'Pabrik 5',
-    subMenu: [
-      { label: 'Desalination', slug: 'desalination' },
-      { label: 'Demineralization', slug: 'demineralization' },
-      { label: 'Boiler Feed Water', slug: 'boiler-feed-water' },
-      { label: 'Boiler Water', slug: 'boiler-water' },
-      { label: 'Steam', slug: 'steam' }
-    ]
-  },
-  {
-    kode: 'P6',
-    label: 'Pabrik 6',
-    subMenu: [
-      { label: 'Desalination', slug: 'desalination' },
-      { label: 'Demineralization', slug: 'demineralization' },
-      { label: 'Boiler Feed Water', slug: 'boiler-feed-water' },
-      {
-        label: 'Boiler Water',
-        slug: 'boiler-water',
-        children: [
-          { label: 'BW BB 1', slug: 'bw-bb-1', defaultUnitId: 'bw-steam-timur-bb-1' },
-          { label: 'BW BB 2', slug: 'bw-bb-2', defaultUnitId: 'bw-steam-timur-bb-2' },
-        ],
-      },
-      { label: 'Steam', slug: 'steam' },
-    ],
-  },
-];
 
 // Judul section
 function SectionLabel({ children, className = '' }) {
@@ -102,9 +30,34 @@ export default function Sidebar({ isOpen, onClose }) {
   const [searchParams] = useSearchParams();
   const { user, logout } = useAuth();
 
-  // Usestate menu open
+  const [plants, setPlants] = useState([]);
+  const [loadingMenu, setLoadingMenu] = useState(true);
+  const [menuError, setMenuError] = useState(false);
+
+  // State menu open
   const [openPlants, setOpenPlants] = useState({});
   const [openCategories, setOpenCategories] = useState({});
+
+  useEffect(() => {
+    let cancelled = false;
+
+    api
+      .get('/plants/menu-structure')
+      .then((res) => {
+        if (!cancelled) setPlants(res.data.data || []);
+      })
+      .catch((err) => {
+        console.error('Gagal memuat menu', err);
+        if (!cancelled) setMenuError(true);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingMenu(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleLogout = async () => {
     await logout();
@@ -117,8 +70,10 @@ export default function Sidebar({ isOpen, onClose }) {
     setOpenPlants((prev) => ({ ...prev, [kode]: !prev[kode] }));
   };
 
-  const toggleCategory = (slug) => {
-    setOpenCategories((prev) => ({ ...prev, [slug]: !prev[slug] }));
+  // Key per plant, so the same slug with diferent plant not open
+  const toggleCategory = (kode, slug) => {
+    const key = `${kode}:${slug}`;
+    setOpenCategories((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
   const isPlantActive = (kode) => location.pathname.startsWith(`/pabrik/${kode}`);
@@ -171,112 +126,122 @@ export default function Sidebar({ isOpen, onClose }) {
             <nav className="flex flex-col px-4 py-5 gap-1">
               <SectionLabel>Unit Pabrik</SectionLabel>
 
-              {PLANTS.map((plant) => {
-                const hasSub = Boolean(plant.subMenu);
-                const plantActive = isPlantActive(plant.kode);
-                const plantExpanded = Boolean(openPlants[plant.kode]);
+              {loadingMenu && (
+                <p className="px-4 py-2 text-xs text-[#A3AED0]">Memuat menu...</p>
+              )}
 
-                return (
-                  <div key={plant.kode}>
-                    {hasSub ? (
-                      <button
-                        onClick={() => togglePlant(plant.kode)}
-                        className={`
-                          flex items-center gap-3.5 w-full px-4 py-3
-                          rounded-xl text-[14px] font-medium text-left
-                          transition-colors duration-150
-                          ${plantActive ? activeStyle : `${baseText} ${hoverStyle}`}
-                        `}
-                      >
-                        <span className="shrink-0"><Factory size={20} /></span>
-                        <span className="flex-1 leading-tight text-left">{plant.label}</span>
-                        <span className="shrink-0">
-                          {plantExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
-                        </span>
-                      </button>
-                    ) : (
-                      <Link
-                        to={`/pabrik/${plant.kode}`}
-                        onClick={onClose}
-                        className={`
-                          flex items-center gap-3.5 w-full px-4 py-3
-                          rounded-xl text-[14px] font-medium
-                          transition-colors duration-150
-                          ${plantActive ? activeStyle : `${baseText} ${hoverStyle}`}
-                        `}
-                      >
-                        <span className="shrink-0"><Factory size={20} /></span>
-                        <span className="flex-1 leading-tight">{plant.label}</span>
-                      </Link>
-                    )}
+              {!loadingMenu && menuError && (
+                <p className="px-4 py-2 text-xs text-red-500">Gagal memuat menu pabrik.</p>
+              )}
 
-                    {/* Level 2: Kategori Utama */}
-                    {hasSub && plantExpanded && (
-                      <div className="ml-4 pl-5 mt-1 mb-1 flex flex-col gap-0.5 border-l-2 border-slate-100">
-                        {plant.subMenu.map((cat) => {
-                          const hasChildren = Boolean(cat.children);
-                          const catPath = `/pabrik/${plant.kode}/${cat.slug}`;
-                          const catActive = isCategoryActive(plant.kode, cat.slug);
-                          const catExpanded = Boolean(openCategories[cat.slug]);
+              {!loadingMenu &&
+                !menuError &&
+                plants.map((plant) => {
+                  const hasSub = plant.subMenu?.length > 0;
+                  const plantActive = isPlantActive(plant.kode);
+                  const plantExpanded = Boolean(openPlants[plant.kode]);
 
-                          return (
-                            <div key={cat.slug}>
-                              {hasChildren ? (
-                                <button
-                                  onClick={() => toggleCategory(cat.slug)}
-                                  className={`
-                                    flex items-center gap-2 w-full text-left px-3 py-2 text-[13px] rounded-lg
-                                    transition-colors leading-tight
-                                    ${catActive ? activeStyle : `${baseText} ${hoverStyle}`}
-                                  `}
-                                >
-                                  <span className="flex-1">{cat.label}</span>
-                                  {catExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-                                </button>
-                              ) : (
-                                <Link
-                                  to={catPath}
-                                  onClick={onClose}
-                                  className={`
-                                    block w-full text-left px-3 py-2 text-[13px] rounded-lg
-                                    transition-colors leading-tight
-                                    ${isLeafActive(catPath) ? activeStyle : `${baseText} ${hoverStyle}`}
-                                  `}
-                                >
-                                  {cat.label}
-                                </Link>
-                              )}
+                  return (
+                    <div key={plant.kode}>
+                      {hasSub ? (
+                        <button
+                          onClick={() => togglePlant(plant.kode)}
+                          className={`
+                            flex items-center gap-3.5 w-full px-4 py-3
+                            rounded-xl text-[14px] font-medium text-left
+                            transition-colors duration-150
+                            ${plantActive ? activeStyle : `${baseText} ${hoverStyle}`}
+                          `}
+                        >
+                          <span className="shrink-0"><Factory size={20} /></span>
+                          <span className="flex-1 leading-tight text-left">{plant.label}</span>
+                          <span className="shrink-0">
+                            {plantExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+                          </span>
+                        </button>
+                      ) : (
+                        <Link
+                          to={`/pabrik/${plant.kode}`}
+                          onClick={onClose}
+                          className={`
+                            flex items-center gap-3.5 w-full px-4 py-3
+                            rounded-xl text-[14px] font-medium
+                            transition-colors duration-150
+                            ${plantActive ? activeStyle : `${baseText} ${hoverStyle}`}
+                          `}
+                        >
+                          <span className="shrink-0"><Factory size={20} /></span>
+                          <span className="flex-1 leading-tight">{plant.label}</span>
+                        </Link>
+                      )}
 
-                              {/* Level 3: Sub Kategori (BW BB 1 / BW BB 2) */}
-                              {hasChildren && catExpanded && (
-                                <div className="ml-3 pl-4 mt-1 mb-1 flex flex-col gap-0.5 border-l-2 border-slate-100">
-                                  {cat.children.map((child) => {
-                                    const childTo = `${catPath}?group=${child.slug}&unit_${child.slug}=${child.defaultUnitId}`;
-                                    return (
-                                      <Link
-                                        key={child.slug}
-                                        to={childTo}
-                                        onClick={onClose}
-                                        className={`
-                                          block w-full text-left px-3 py-1.5 text-[12.5px] rounded-lg
-                                          transition-colors leading-tight
-                                          ${isChildActive(catPath, child.slug, cat.children) ? activeStyle : `${baseText} ${hoverStyle}`}
-                                        `}
-                                      >
-                                        {child.label}
-                                      </Link>
-                                    );
-                                  })}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+                      {/* Level 2: Kategori Utama */}
+                      {hasSub && plantExpanded && (
+                        <div className="ml-4 pl-5 mt-1 mb-1 flex flex-col gap-0.5 border-l-2 border-slate-100">
+                          {plant.subMenu.map((cat) => {
+                            const hasChildren = Boolean(cat.children?.length);
+                            const catPath = `/pabrik/${plant.kode}/${cat.slug}`;
+                            const catActive = isCategoryActive(plant.kode, cat.slug);
+                            const catExpanded = Boolean(openCategories[`${plant.kode}:${cat.slug}`]);
+
+                            return (
+                              <div key={cat.slug}>
+                                {hasChildren ? (
+                                  <button
+                                    onClick={() => toggleCategory(plant.kode, cat.slug)}
+                                    className={`
+                                      flex items-center gap-2 w-full text-left px-3 py-2 text-[13px] rounded-lg
+                                      transition-colors leading-tight
+                                      ${catActive ? activeStyle : `${baseText} ${hoverStyle}`}
+                                    `}
+                                  >
+                                    <span className="flex-1">{cat.label}</span>
+                                    {catExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                                  </button>
+                                ) : (
+                                  <Link
+                                    to={catPath}
+                                    onClick={onClose}
+                                    className={`
+                                      block w-full text-left px-3 py-2 text-[13px] rounded-lg
+                                      transition-colors leading-tight
+                                      ${isLeafActive(catPath) ? activeStyle : `${baseText} ${hoverStyle}`}
+                                    `}
+                                  >
+                                    {cat.label}
+                                  </Link>
+                                )}
+
+                                {/* Level 3: Sub Kategori (ex. BW BB 1 / BW BB 2) */}
+                                {hasChildren && catExpanded && (
+                                  <div className="ml-3 pl-4 mt-1 mb-1 flex flex-col gap-0.5 border-l-2 border-slate-100">
+                                    {cat.children.map((child) => {
+                                      const childTo = `${catPath}?group=${child.slug}&unit_${child.slug}=${child.defaultUnitId}`;
+                                      return (
+                                        <Link
+                                          key={child.slug}
+                                          to={childTo}
+                                          onClick={onClose}
+                                          className={`
+                                            block w-full text-left px-3 py-1.5 text-[12.5px] rounded-lg
+                                            transition-colors leading-tight
+                                            ${isChildActive(catPath, child.slug, cat.children) ? activeStyle : `${baseText} ${hoverStyle}`}
+                                          `}
+                                        >
+                                          {child.label}
+                                        </Link>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
 
               {/* Konfigurasi - admin only */}
               {isAdmin && (
