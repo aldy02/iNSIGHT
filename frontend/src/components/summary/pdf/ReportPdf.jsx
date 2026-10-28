@@ -7,8 +7,8 @@ const INK = '#1B2559';
 const MUTED = '#8292AA';
 const LINE = '#E2E8F0';
 
-const PER_PAGE = 3; // jumlah parameter per halaman
-const CHART_H = 75; // tinggi chart, kecilkan lagi (misal 50) kalau halaman 1 masih jadi 2 parameter
+const PER_PAGE = 3; // Total parameter per page
+const CHART_H = 75; // Chart high
 
 const s = StyleSheet.create({
   page: { paddingTop: 24, paddingHorizontal: 32, paddingBottom: 52, fontSize: 9, fontFamily: 'Helvetica', color: INK },
