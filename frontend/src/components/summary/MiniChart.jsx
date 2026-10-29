@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, memo } from 'react';
 import {
   ResponsiveContainer,
   AreaChart,
@@ -13,7 +13,7 @@ import { toMs, buildYTicks, pickStepDays, buildXTicks, MIN_TICK_PX } from '../..
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-export default function MiniChart({ gid, data, kop }) {
+  function MiniChart({ gid, data, kop }) {
   const values = data.map((d) => d.nilai).filter((v) => v != null);
   const hasData = values.length > 0;
 
@@ -147,3 +147,4 @@ export default function MiniChart({ gid, data, kop }) {
     </div>
   );
 }
+export default memo(MiniChart);

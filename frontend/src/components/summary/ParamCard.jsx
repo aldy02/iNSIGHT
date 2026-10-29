@@ -1,9 +1,11 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { X } from 'lucide-react';
 import MiniChart from './MiniChart';
 import { inputCls } from './FormControls';
 import useReadings from '../../hooks/useReadings';
 import { summarize, formatKop, fmtNum } from '../../utils/summary';
+
+const SUMMARY_DEBOUNCE_MS = 250;
 
 function Stat({ label, value, warn }) {
   return (
@@ -23,6 +25,44 @@ export default function ParamCard({
   const gid = `g-${pkey.replace(/[^a-zA-Z0-9]/g, '-')}`;
   const satuan = param.satuan ? ` ${param.satuan}` : '';
   const val = (n) => (stats ? `${fmtNum(n)}${satuan}` : '-');
+
+  // Teks ringkasan diketik di state lokal supaya halaman tidak dirender ulang di setiap ketukan.
+  // Nilainya dikirim ke builder setelah jeda mengetik, saat kolom kehilangan fokus, atau saat kartu ditutup.
+  const [text, setText] = useState(summary);
+  const textRef = useRef(summary);
+  const lastSent = useRef(summary);
+  const timerRef = useRef(null);
+  const onChangeRef = useRef(onChangeSummary);
+  onChangeRef.current = onChangeSummary;
+
+  // Sinkron kalau ringkasan berubah dari luar (muat laporan tersimpan, reset)
+  useEffect(() => {
+    if (summary !== lastSent.current) {
+      lastSent.current = summary;
+      textRef.current = summary;
+      setText(summary);
+    }
+  }, [summary]);
+
+  const flush = useCallback(() => {
+    clearTimeout(timerRef.current);
+    timerRef.current = null;
+    if (textRef.current !== lastSent.current) {
+      lastSent.current = textRef.current;
+      onChangeRef.current(textRef.current);
+    }
+  }, []);
+
+  const handleChange = (e) => {
+    const value = e.target.value;
+    textRef.current = value;
+    setText(value);
+    clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(flush, SUMMARY_DEBOUNCE_MS);
+  };
+
+  // Kirim sisa ketikan kalau kartu ditutup sebelum jeda selesai
+  useEffect(() => () => flush(), [flush]);
 
   const emptyMessage = !startDate || !endDate
     ? 'Pilih periode yang valid untuk menampilkan grafik'
@@ -73,8 +113,9 @@ export default function ParamCard({
       <label className="block text-xs font-medium text-[#1B2559] mt-4 mb-1.5">Ringkasan {param.nama}</label>
       <textarea
         rows={3}
-        value={summary}
-        onChange={(e) => onChangeSummary(e.target.value)}
+        value={text}
+        onChange={handleChange}
+        onBlur={flush}
         placeholder="Tulis ringkasan terkait kondisi terkini..."
         className={`${inputCls} resize-y leading-relaxed`}
       />
