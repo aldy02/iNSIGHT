@@ -54,6 +54,8 @@ function rangeToMs(activeRange) {
 
 function GroupSection({ kategoriSlug, kategoriLabel, group, activeRange }) {
   const subCategories = group.subCategories;
+  // Always put silica at the bottom
+  const isSilica = (p) => /silica/i.test(p.nama)
 
   // If sub category "-" then show main category
   const subLabel = (sub) => (sub.nama === '-' ? kategoriLabel : sub.nama);
@@ -77,7 +79,9 @@ function GroupSection({ kategoriSlug, kategoriLabel, group, activeRange }) {
   const activeUnit = activeSub.units.find((unit) => unit.id === activeUnitId) || activeSub.units[0];
 
   // Only registered parameter in active unit (with or without kop)
-  const visibleParams = activeSub.parameters.filter((p) => p.unitIds?.includes(activeUnit.id));
+  const visibleParams = activeSub.parameters
+  .filter((p) => p.unitIds?.includes(activeUnit.id))
+  .sort((a,b) => Number(isSilica(a)) - Number(isSilica(b)))
 
   const showSubTabs = subCategories.length > 1;
   const showUnitTabs = activeSub.units.length > 1;
