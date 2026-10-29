@@ -14,7 +14,7 @@ import {
     CartesianGrid,
     ReferenceDot,
 } from 'recharts';
-import { formatKop } from '../tests/data';
+import { formatKop } from '../utils/summary';
 
 const ZOOM_STEP = 0.8; // Every scroll, Y range zooms in to 80% or zooms out by 125%
 const MIN_SPAN_RATIO = 0.02; // Zoom in max 2% of default range

@@ -27,6 +27,7 @@ export function parseDmy(text) {
 export const fmtNum = (n) => Number(n.toFixed(2)).toString();
 
 export function formatKop(kop, satuan) {
+  if (!kop) return '-';
   const u = satuan ? ` ${satuan}` : '';
   const maxSign = kop.maxInclusive === false ? '<' : '\u2264';
   const minSign = kop.minInclusive === false ? '>' : '\u2265';

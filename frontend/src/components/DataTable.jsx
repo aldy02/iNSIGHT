@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Search, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
-import { formatKop } from '../tests/data';
+import { formatKop } from '../utils/summary';
 
 const DATES_PER_PAGE = 7;
 
