@@ -1,32 +1,77 @@
-import { Document, Page, View, Text, Image, StyleSheet } from '@react-pdf/renderer';
+import { Document, Page, View, Text, Image, StyleSheet, Font } from '@react-pdf/renderer';
 import PdfLineChart from './PdfLineChart';
 import { fmtNum } from '../../../utils/summary';
 import logo from '../../../assets/Logo.png';
+
+Font.register({
+  family: 'Roboto',
+  fonts: [
+    { src: '/fonts/Roboto-Regular.ttf', fontWeight: 'normal' },
+    { src: '/fonts/Roboto-Bold.ttf', fontWeight: 'bold' },
+  ],
+});
 
 const INK = '#1B2559';
 const MUTED = '#8292AA';
 const LINE = '#E2E8F0';
 
-const PER_PAGE = 3; // Total parameter per page
-const CHART_H = 75; // Chart high
+// Page setting
+const PER_PAGE = 3;
+const CHART_H = 75; // Chart height
+
+const PAGE_PAD_TOP = 24;
+const PAGE_PAD_BOTTOM = 42;
+const PAGE_H = 842; // A4 (pt)
+const CONTENT_H = PAGE_H - PAGE_PAD_TOP - PAGE_PAD_BOTTOM;
+
+// Size settings
+const EST = {
+  base: 172,
+  summaryLine: 13,
+  summaryChars: 105,
+  summaryGap: 6,
+  unitTitle: 19,
+  category: 28,
+  group: 18,
+  noData: 20,
+  firstPageHeader: 50,
+  safety: 6,
+};
 
 const s = StyleSheet.create({
-  page: { paddingTop: 24, paddingHorizontal: 32, paddingBottom: 52, fontSize: 9, fontFamily: 'Helvetica', color: INK },
-  title: { fontSize: 18, fontFamily: 'Helvetica-Bold', marginTop: 0 },
+  page: {
+    paddingTop: PAGE_PAD_TOP,
+    paddingHorizontal: 32,
+    paddingBottom: PAGE_PAD_BOTTOM,
+    fontSize: 9,
+    fontFamily: 'Roboto',
+    color: INK,
+  },
+  title: { fontSize: 18, fontFamily: 'Roboto', fontWeight: 'bold', marginTop: 0 },
   intro: { fontSize: 10, marginTop: 3, marginBottom: 4, lineHeight: 1.3 },
-  bold: { fontFamily: 'Helvetica-Bold' },
-  category: { fontSize: 12, fontFamily: 'Helvetica-Bold', paddingBottom: 3, borderBottomWidth: 0.7, borderBottomColor: LINE, marginTop: 4, marginBottom: 4 },
-  group: { fontSize: 10.5, fontFamily: 'Helvetica-Bold', marginBottom: 3, marginTop: 0 },
+  bold: { fontFamily: 'Roboto', fontWeight: 'bold' },
+  category: {
+    fontSize: 12,
+    fontFamily: 'Roboto',
+    fontWeight: 'bold',
+    paddingBottom: 3,
+    borderBottomWidth: 0.7,
+    borderBottomColor: LINE,
+    marginTop: 4,
+    marginBottom: 4,
+  },
+  group: { fontSize: 10.5, fontFamily: 'Roboto', fontWeight: 'bold', marginBottom: 3, marginTop: 0 },
 
   // Card box
   card: { borderLeftWidth: 0.7, borderRightWidth: 0.7, borderColor: LINE },
   cardFirst: { borderTopWidth: 0.7, borderTopLeftRadius: 6, borderTopRightRadius: 6 },
   cardNext: { borderTopWidth: 0.5 },
   cardLast: { borderBottomWidth: 0.7, borderBottomLeftRadius: 6, borderBottomRightRadius: 6, marginBottom: 6 },
+  cardPageEnd: { marginBottom: 0 }, // The verry bootm of the card in the page did not have a margin so it will not overflow
 
-  unitTitle: { fontSize: 10, fontFamily: 'Helvetica-Bold', paddingHorizontal: 10, paddingTop: 6, paddingBottom: 0 },
+  unitTitle: { fontSize: 10, fontFamily: 'Roboto', fontWeight: 'bold', paddingHorizontal: 10, paddingTop: 6, paddingBottom: 0 },
   param: { paddingHorizontal: 10, paddingTop: 6, paddingBottom: 8 },
-  paramName: { fontSize: 10, fontFamily: 'Helvetica-Bold' },
+  paramName: { fontSize: 10, fontFamily: 'Roboto', fontWeight: 'bold' },
   kop: { fontSize: 8, color: MUTED, marginTop: 3, marginBottom: 5 },
   chartBox: { borderWidth: 0.7, borderColor: LINE, borderRadius: 4, paddingHorizontal: 6, paddingTop: 6, paddingBottom: 3 },
   empty: { fontSize: 8, color: MUTED, textAlign: 'center', paddingVertical: 20 },
@@ -34,7 +79,7 @@ const s = StyleSheet.create({
   stat: { flex: 1, borderWidth: 0.7, borderColor: LINE, borderRadius: 4, paddingHorizontal: 8, paddingVertical: 3, marginRight: 6 },
   statLast: { marginRight: 0 },
   statLabel: { fontSize: 7, color: MUTED },
-  statValue: { fontSize: 9, fontFamily: 'Helvetica-Bold', marginTop: 1 },
+  statValue: { fontSize: 9, fontFamily: 'Roboto', fontWeight: 'bold', marginTop: 1 },
   summary: { marginTop: 6, fontSize: 9, lineHeight: 1.4 },
 
   // Footer
@@ -66,12 +111,15 @@ function Stat({ label, value, last }) {
   );
 }
 
-// One block one parameter title unit follow the first
-function ParamBlock({ p, title, first, last }) {
+// Satu blok = satu parameter (judul unit hanya di parameter pertama)
+function ParamBlock({ p, title, first, last, pageEnd }) {
   const unit = p.satuan ? ` ${p.satuan}` : '';
   const val = (n) => (p.stats ? `${fmtNum(n)}${unit}` : '-');
   return (
-    <View style={[s.card, first ? s.cardFirst : s.cardNext, last && s.cardLast]} wrap={false}>
+    <View
+      style={[s.card, first ? s.cardFirst : s.cardNext, last && s.cardLast, pageEnd && s.cardPageEnd]}
+      wrap={false}
+    >
       {title ? <Text style={s.unitTitle}>{title}</Text> : null}
 
       <View style={s.param}>
@@ -99,7 +147,7 @@ function ParamBlock({ p, title, first, last }) {
   );
 }
 
-// Building block category => sub category => unit => parameter
+// Susun blok: kategori => sub kategori => unit => parameter
 function buildBlocks(report) {
   const blocks = [];
   const seenCat = new Set();
@@ -128,18 +176,47 @@ function buildBlocks(report) {
   return blocks;
 }
 
-const chunk = (arr, size) => {
-  const out = [];
-  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
-  return out;
-};
+// Perkiraan tinggi satu blok (pt)
+function estimateHeight(b) {
+  let h = EST.base;
+  if (!b.p.stats) h += EST.noData;
+  if (b.p.summary) {
+    h += Math.ceil(b.p.summary.length / EST.summaryChars) * EST.summaryLine + EST.summaryGap;
+  }
+  if (b.unitTitle) h += EST.unitTitle;
+  if (b.cat) h += EST.category;
+  if (b.group) h += EST.group;
+  return h;
+}
+
+// Bagi ke halaman: maksimal PER_PAGE blok DAN tidak melebihi tinggi halaman
+function paginate(blocks) {
+  const pages = [];
+  let cur = [];
+  let used = EST.firstPageHeader;
+  const limit = CONTENT_H - EST.safety;
+
+  blocks.forEach((b) => {
+    const h = estimateHeight(b);
+    const full = cur.length >= PER_PAGE || (cur.length > 0 && used + h > limit);
+    if (full) {
+      pages.push(cur);
+      cur = [];
+      used = 0;
+    }
+    cur.push(b);
+    used += h;
+  });
+  if (cur.length) pages.push(cur);
+  return pages;
+}
 
 const formatPrinted = (d = new Date()) =>
   d.toLocaleString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
 export default function ReportPdf({ report }) {
   const printedAt = report.printedAt ?? formatPrinted();
-  const pages = chunk(buildBlocks(report), PER_PAGE);
+  const pages = paginate(buildBlocks(report));
 
   return (
     <Document title={`Laporan ${report.plantName}`} author="iNSIGHT - Pupuk Kaltim">
@@ -158,8 +235,16 @@ export default function ReportPdf({ report }) {
             </>
           )}
 
-          {blocks.map((b) => {
-            const block = <ParamBlock p={b.p} title={b.unitTitle} first={b.first} last={b.last} />;
+          {blocks.map((b, i) => {
+            const block = (
+              <ParamBlock
+                p={b.p}
+                title={b.unitTitle}
+                first={b.first}
+                last={b.last}
+                pageEnd={i === blocks.length - 1}
+              />
+            );
             if (!b.cat && !b.group) return <View key={b.key}>{block}</View>;
             return (
               <View key={b.key} wrap={false}>

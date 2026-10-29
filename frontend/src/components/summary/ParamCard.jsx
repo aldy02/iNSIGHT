@@ -26,8 +26,8 @@ export default function ParamCard({
   const satuan = param.satuan ? ` ${param.satuan}` : '';
   const val = (n) => (stats ? `${fmtNum(n)}${satuan}` : '-');
 
-  // Teks ringkasan diketik di state lokal supaya halaman tidak dirender ulang di setiap ketukan.
-  // Nilainya dikirim ke builder setelah jeda mengetik, saat kolom kehilangan fokus, atau saat kartu ditutup.
+    // Ringkasan Parameter type ini local state so page not re render every time user typing
+  // Result send to builder after stop typing, or when textarea lost focus, or when card closed
   const [text, setText] = useState(summary);
   const textRef = useRef(summary);
   const lastSent = useRef(summary);
@@ -35,7 +35,6 @@ export default function ParamCard({
   const onChangeRef = useRef(onChangeSummary);
   onChangeRef.current = onChangeSummary;
 
-  // Sinkron kalau ringkasan berubah dari luar (muat laporan tersimpan, reset)
   useEffect(() => {
     if (summary !== lastSent.current) {
       lastSent.current = summary;
@@ -61,7 +60,6 @@ export default function ParamCard({
     timerRef.current = setTimeout(flush, SUMMARY_DEBOUNCE_MS);
   };
 
-  // Kirim sisa ketikan kalau kartu ditutup sebelum jeda selesai
   useEffect(() => () => flush(), [flush]);
 
   const emptyMessage = !startDate || !endDate

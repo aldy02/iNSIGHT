@@ -1,7 +1,7 @@
 import { View, Text, Svg, Path, Line, Circle, Defs, LinearGradient, Stop } from '@react-pdf/renderer';
 import { line, area, curveMonotoneX } from 'd3-shape';
 import { scaleLinear } from 'd3-scale';
-import { buildYTicks, buildXTicks } from '../../../utils/chartTicks';
+import { toMs, buildYTicks, pickStepDays, buildXTicks } from '../../../utils/chartAxis';
 
 const C = {
   actual: '#003399',
@@ -12,6 +12,10 @@ const C = {
   text: '#8292AA',
 };
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+const MIN_TICK_PT = 30; // Jarak minimal antar label X di PDF (satuan point)
+const FONT = 'Roboto'; // Sudah didaftarkan di ReportPdf.jsx
+
 export default function PdfLineChart({ id, data, kop, width = 494, height = 135 }) {
   const values = data.map((d) => d.nilai).filter((v) => v != null);
   if (values.length === 0) return null;
@@ -21,7 +25,6 @@ export default function PdfLineChart({ id, data, kop, width = 494, height = 135 
   const highest = data.filter((d) => d.nilai != null).reduce((a, b) => (b.nilai > a.nilai ? b : a));
   const { ticks, decimals } = buildYTicks(0, yMax, 5);
   const fmt = (v) => v.toFixed(decimals);
-  const xTicks = buildXTicks(data, 14);
 
   const m = { top: 6, right: 6, bottom: 18 };
   const left = Math.max(14, Math.max(...ticks.map((t) => fmt(t).length)) * 4.2 + 6);
@@ -29,6 +32,19 @@ export default function PdfLineChart({ id, data, kop, width = 494, height = 135 
   const plotH = height - m.top - m.bottom;
   const padX = 8;
   const n = data.length;
+
+  // Tick X: jumlah maksimum dan jarak minimal dihitung dari lebar plot
+  const innerW = plotW - padX * 2;
+  const pxPerPoint = n > 1 ? innerW / (n - 1) : MIN_TICK_PT;
+  const minIndexGap = Math.max(1, Math.ceil(MIN_TICK_PT / pxPerPoint));
+  const maxXTicks = Math.max(2, Math.floor(innerW / MIN_TICK_PT));
+
+  const start = toMs(data[0]);
+  const end = toMs(data[n - 1]);
+  const xTicks =
+    Number.isNaN(start) || Number.isNaN(end)
+      ? data.filter((_, i) => i % minIndexGap === 0).map((d) => d.label)
+      : buildXTicks(data, pickStepDays(Math.max(end - start, DAY_MS), maxXTicks), minIndexGap);
 
   const px = (i) => left + (n <= 1 ? plotW / 2 : padX + (i * (plotW - padX * 2)) / (n - 1));
   const y = scaleLinear().domain([0, yMax]).range([m.top + plotH, m.top]);
@@ -104,7 +120,7 @@ export default function PdfLineChart({ id, data, kop, width = 494, height = 135 
 
         {/* Tick Y */}
         {ticks.map((t) => (
-          <Text key={`yt-${t}`} x={left - 6} y={y(t) + 2.5} textAnchor="end" fill={C.text} style={{ fontSize: 7 }}>
+          <Text key={`yt-${t}`} x={left - 6} y={y(t) + 2.5} textAnchor="end" fill={C.text} style={{ fontSize: 7, fontFamily: FONT }}>
             {fmt(t)}
           </Text>
         ))}
@@ -114,7 +130,7 @@ export default function PdfLineChart({ id, data, kop, width = 494, height = 135 
           const i = data.findIndex((d) => d.label === lbl);
           if (i < 0) return null;
           return (
-            <Text key={`xt-${lbl}`} x={px(i)} y={y(0) + 11} textAnchor="middle" fill={C.text} style={{ fontSize: 7 }}>
+            <Text key={`xt-${lbl}`} x={px(i)} y={y(0) + 11} textAnchor="middle" fill={C.text} style={{ fontSize: 7, fontFamily: FONT }}>
               {lbl}
             </Text>
           );
