@@ -4,6 +4,7 @@ import { groupItems, summarize, formatKop, keyOf } from './summary';
 const letter = (i) => String.fromCharCode(65 + i);
 
 // Fix unicode character from μ (yunani) to µ (U+00B5) cause helvetica font cant read latin character
+// Actually this is not necessary anymore cause i already used roboto
 const fix = (s) => (typeof s === 'string' ? s.replace(/\u03bc/g, '\u00b5') : s);
 
 // Make report data from state builder and daily data api

@@ -219,7 +219,6 @@ function ParameterChart({ parameter, unit, data, history, kop, fmt, gradId, fill
     const maxXTicks = chartWidth > 0
         ? Math.max(2, Math.floor(plotWidth / MIN_TICK_PX))
         : (fill ? 30 : 18);
-    // Lebar per titik data di layar (sumbu X kategorikal = lebar sama per baris)
     const pxPerPoint = chartWidth > 0
         ? plotWidth / Math.max(1, visibleData.length - 1)
         : MIN_TICK_PX;

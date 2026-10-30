@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Trash2, CheckCircle2, ChevronDown, Info } from 'lucide-react';
 import { createParameter, updateParameter, deleteParameter } from '../api/parameters';
+import { overlappingSources, compactName } from '../utils/sourceFile';
 
 const NEW = '__new__';
 
@@ -14,7 +15,7 @@ const EMPTY_FORM = {
   unit: '', unitNew: '',
   min: '', max: '', minInc: true, maxInc: true,
   satuan: '', effectiveDate: today(),
-  sourceId: '', column: '',
+  sourceId: '', sourceNew: '', column: '',
 };
 
 const labelOf = (name) => (name === '-' ? '- (tidak ada)' : name);
@@ -40,7 +41,7 @@ const formFromRow = (r) => ({
   unit: r.unit, unitNew: '',
   min: r.min ?? '', max: r.max ?? '', minInc: true, maxInc: true,
   satuan: r.satuan || '', effectiveDate: r.effectiveDate || today(),
-  sourceId: r.sourceId ? String(r.sourceId) : '', column: r.column || '',
+  sourceId: r.sourceId ? String(r.sourceId) : '', sourceNew: '', column: r.column || '',
 });
 
 // Small UI
@@ -165,12 +166,16 @@ function ParameterFormModalContent({
   const column = form.column.trim().toUpperCase();
   const source = sources.find((s) => String(s.id) === String(form.sourceId));
 
+  const newSource = form.sourceId === NEW;
+  const sourceName = newSource ? form.sourceNew.trim() : source?.nama;
+  const overlap = newSource ? overlappingSources(sourceName, sources) : [];
+
   const preview = useMemo(() => {
-    if (!plant || !names.parameter || !names.main || !source || !column) return null;
+    if (!plant || !names.parameter || !names.main || !sourceName || !column) return null;
     const kop = kopLabel(form);
     const path = [names.main, names.sub, names.unit].filter((x) => x && x !== '-').join(' › ');
-    return `${names.parameter} akan tampil di ${plant.nama} › ${path}${kop ? `, dengan batas ${kop}` : ', belum ada batas KOP'}. Datanya dibaca dari file ${source.nama} kolom ${column}.`;
-  }, [form, plant, names.parameter, names.main, names.sub, names.unit, source, column]);
+    return `${names.parameter} akan tampil di ${plant.nama} › ${path}${kop ? `, dengan batas ${kop}` : ', belum ada batas KOP'}. Datanya dibaca dari file ${sourceName} kolom ${column}.`;
+  }, [form, plant, names.parameter, names.main, names.sub, names.unit, sourceName, column]);
 
   if (!isOpen || !plant) return null;
 
@@ -194,6 +199,12 @@ function ParameterFormModalContent({
       e.max = 'Nilai maksimum tidak boleh lebih kecil dari minimum.';
 
     if (!form.sourceId) e.sourceId = 'Pilih file sumber data.';
+    if (newSource) {
+      if (!sourceName) e.sourceNew = 'Nama sumber wajib diisi.';
+      else if (sourceName.length > 100) e.sourceNew = 'Maksimal 100 karakter.';
+      else if (sources.some((s) => compactName(s.nama) === compactName(sourceName)))
+        e.sourceNew = 'Sumber dengan nama ini sudah ada di pabrik ini.';
+    }
     if (!/^[A-Z]{1,3}$/.test(column)) e.column = 'Isi huruf kolom Excel, contoh: D atau AB.';
 
     // One parameter (unit + parameter) can only have one column
@@ -205,8 +216,8 @@ function ParameterFormModalContent({
       if (dupPoint) e.parameter = 'Parameter ini sudah terdaftar di unit tersebut. Edit baris yang ada.';
     }
 
-    // one column from one file can only use for one parameter
-    if (!e.column && !e.sourceId) {
+    // one column from one file can only use for one parameter (sumber baru belum punya kolom)
+    if (!e.column && !e.sourceId && !newSource) {
       const dupCol = rows.find(
         (r) => r.id !== editingId && String(r.sourceId) === String(form.sourceId) && r.column === column,
       );
@@ -230,9 +241,10 @@ function ParameterFormModalContent({
       main: names.main,
       sub: names.sub,
       unit: names.unit,
-      // Backend only create new sub category / unit if user allowed here
-      allowCreate: { sub: form.sub === NEW, unit: form.unit === NEW },
-      sourceId: Number(form.sourceId),
+      // Backend only create new sub category / unit / source if user allowed here
+      allowCreate: { sub: form.sub === NEW, unit: form.unit === NEW, source: newSource },
+      sourceId: newSource ? null : Number(form.sourceId),
+      newSource: newSource ? { nama: sourceName } : null,
       column,
       min: String(form.min) === '' ? null : Number(String(form.min).replace(',', '.')),
       max: String(form.max) === '' ? null : Number(String(form.max).replace(',', '.')),
@@ -321,16 +333,17 @@ function ParameterFormModalContent({
           </div>
 
           <h2 className="text-2xl font-bold text-[#2B3674] mb-2">Hapus Data!</h2>
-          <p className="text-[15px] text-[#8789C0] mb-8 leading-relaxed">
+          <p className="text-[15px] text-[#8789C0] mb-4 leading-relaxed">
             Apakah Anda yakin ingin menghapus parameter{' '}
             <span className="font-semibold text-[#5B69B9]">
               {initialData?.parameter}
               {initialData && pathLabel(initialData) ? ` (${pathLabel(initialData)})` : ''}
             </span>
             ?
-            <br />
-            Pemetaan kolom dan batas KOP aktif akan dihapus. Data harian yang sudah tersimpan tidak ikut terhapus.
           </p>
+          <div className="bg-red-50 border border-red-100 text-red-600 text-sm rounded-xl px-4 py-3 mb-6 leading-relaxed">
+            <b>Peringatan:</b> semua data yang terkait akan hilang permanen dan tidak bisa dikembalikan.
+          </div>
 
           {error && (
             <div className="bg-red-50 text-red-600 text-sm px-4 py-2.5 rounded-lg mb-4">{error}</div>
@@ -496,8 +509,12 @@ function ParameterFormModalContent({
 
           <Section title="Sumber Data" desc="Dari file dan kolom mana parameter ini dibaca saat upload">
             <Field label="File Excel Sumber" error={errors.sourceId}>
-              <SelectBox value={form.sourceId} onChange={(e) => set({ sourceId: e.target.value })}>
+              <SelectBox
+                value={form.sourceId}
+                onChange={(e) => set({ sourceId: e.target.value, sourceNew: '' })}
+              >
                 <option value="">Pilih file</option>
+                <option value={NEW}>+ Buat sumber baru</option>
                 {sources.map((s) => (
                   <option key={s.id} value={s.id}>{s.nama}</option>
                 ))}
@@ -513,6 +530,32 @@ function ParameterFormModalContent({
                 className={`${inputClass} uppercase`}
               />
             </Field>
+
+            {newSource && (
+              <div className="sm:col-span-2">
+                <Field
+                  label="Nama Sumber (area file)"
+                  error={errors.sourceNew}
+                  hint="Nama ini dipakai untuk mencocokkan nama file saat upload."
+                >
+                  <input
+                    type="text"
+                    autoFocus
+                    value={form.sourceNew}
+                    onChange={(e) => set({ sourceNew: e.target.value })}
+                    maxLength={100}
+                    placeholder="Contoh: Boiler Batubara"
+                    className={inputClass}
+                  />
+                </Field>
+                {overlap.length > 0 && (
+                  <p className="text-xs text-amber-600 mt-1.5">
+                    Nama ini mirip dengan sumber "{overlap.map((s) => s.nama).join('", "')}". Upload tetap aman
+                    (sistem memilih yang namanya paling spesifik), tapi pastikan nama file sesuai.
+                  </p>
+                )}
+              </div>
+            )}
           </Section>
 
           {preview && (

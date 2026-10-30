@@ -14,7 +14,7 @@ const C = {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MIN_TICK_PT = 30; // Jarak minimal antar label X di PDF (satuan point)
-const FONT = 'Roboto'; // Sudah didaftarkan di ReportPdf.jsx
+const FONT = 'Roboto';
 
 export default function PdfLineChart({ id, data, kop, width = 494, height = 135 }) {
   const values = data.map((d) => d.nilai).filter((v) => v != null);

@@ -4,12 +4,10 @@ import { inputCls } from './FormControls';
 import { fmtDmy, parseDmy } from '../../utils/summary';
 
 // Input tanggal berformat dd/mm/yyyy. Nilai yang masuk/keluar tetap YYYY-MM-DD.
-// Bisa diketik (garis miring disisipkan otomatis) atau dipilih lewat ikon kalender.
 export default function DateInput({ value, onChange, min, max }) {
   const [text, setText] = useState(fmtDmy(value));
   const pickerRef = useRef(null);
 
-  // Ikuti perubahan dari luar (mis. nilai awal atau hasil pemilih kalender)
   useEffect(() => {
     setText(fmtDmy(value));
   }, [value]);
@@ -68,7 +66,6 @@ export default function DateInput({ value, onChange, min, max }) {
         <Calendar size={16} />
       </button>
 
-      {/* Pemilih kalender bawaan browser; hanya dipakai untuk memilih, tampilannya disembunyikan */}
       <input
         ref={pickerRef}
         type="date"

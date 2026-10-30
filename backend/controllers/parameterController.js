@@ -13,6 +13,7 @@ class HttpError extends Error {
 
 const clean = (s) => String(s ?? '').trim().replace(/\s+/g, ' ');
 const todayStr = () => new Date().toISOString().slice(0, 10);
+const compactName = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '');
 
 function toNumberOrNull(v, label) {
   if (v === null || v === undefined || String(v).trim() === '') return null;
@@ -30,6 +31,7 @@ function parseBody(body) {
     sub: clean(body.sub),
     unit: clean(body.unit),
     sourceId: Number(body.sourceId),
+    newSourceName: clean(body.newSource?.nama),
     column: String(body.column ?? '').trim().toUpperCase(),
     min: toNumberOrNull(body.min, 'Minimum'),
     max: toNumberOrNull(body.max, 'Maksimum'),
@@ -37,10 +39,11 @@ function parseBody(body) {
     maxInc: body.maxInc === undefined ? true : !!body.maxInc,
     satuan: clean(body.satuan),
     effectiveDate: body.effectiveDate ? String(body.effectiveDate).slice(0, 10) : todayStr(),
-    // Permision to create new sub category / unit (sended from frontend when user chooste to "+ Buat baru")
+    // Permision to create new sub category / unit / source (sended from frontend when user chooste to "+ Buat baru")
     allowCreate: {
       sub: !!body.allowCreate?.sub,
       unit: !!body.allowCreate?.unit,
+      source: !!body.allowCreate?.source,
     },
   };
 
@@ -51,7 +54,14 @@ function parseBody(body) {
     if (!v[key]) throw new HttpError(400, `${label} wajib diisi (isi "-" kalau tidak dipakai).`);
     if (v[key].length > (key === 'unit' ? 150 : 100)) throw new HttpError(400, `${label} terlalu panjang.`);
   }
-  if (!Number.isInteger(v.sourceId) || v.sourceId <= 0) throw new HttpError(400, 'File sumber wajib dipilih.');
+  if (v.allowCreate.source) {
+    // New source: source name is enough
+    if (!v.newSourceName) throw new HttpError(400, 'Nama sumber wajib diisi.');
+    if (v.newSourceName.length > 100) throw new HttpError(400, 'Nama sumber maksimal 100 karakter.');
+    if (!compactName(v.newSourceName)) throw new HttpError(400, 'Nama sumber harus memuat huruf atau angka.');
+  } else if (!Number.isInteger(v.sourceId) || v.sourceId <= 0) {
+    throw new HttpError(400, 'File sumber wajib dipilih.');
+  }
   if (!/^[A-Z]{1,3}$/.test(v.column)) throw new HttpError(400, 'Huruf kolom tidak valid. Contoh: D atau AB.');
   if (v.min !== null && v.max !== null && v.min > v.max) {
     throw new HttpError(400, 'Nilai maksimum tidak boleh lebih kecil dari minimum.');
@@ -68,6 +78,29 @@ const pointKey = (req) => {
   if (!Number.isInteger(unitId) || !Number.isInteger(parameterId)) throw new HttpError(400, 'Parameter URL tidak valid.');
   return { unitId, parameterId };
 };
+
+// Create new source file for one plant
+async function createSource(t, plantId, nama) {
+  const existing = await DataSource.findAll({
+    where: { plant_id: plantId },
+    order: [['id', 'ASC']],
+    transaction: t,
+  });
+  if (existing.some((s) => compactName(s.nama) === compactName(nama))) {
+    throw new HttpError(409, `Sumber "${nama}" sudah ada di pabrik ini.`);
+  }
+  const tpl = existing[0];
+  return DataSource.create(
+    {
+      plant_id: plantId,
+      nama,
+      sheet_name: tpl ? tpl.sheet_name : 'Sheet',
+      date_column: tpl ? tpl.date_column : 'A',
+      data_start_row: tpl ? tpl.data_start_row : 6,
+    },
+    { transaction: t },
+  );
+}
 
 // Re calculate daily status data (formula equal wiht tigger in DB)
 // Need to call after KOP change, Cause trigge only run when daily data change
@@ -165,11 +198,14 @@ async function savePoint(body, oldKey) {
   const plant = await Plant.findByPk(v.plantId);
   if (!plant) throw new HttpError(404, `Pabrik dengan id ${v.plantId} tidak ditemukan.`);
 
-  const source = await DataSource.findOne({ where: { id: v.sourceId, plant_id: v.plantId } });
-  if (!source) throw new HttpError(400, 'File sumber tidak ditemukan untuk pabrik ini.');
-
   const t = await sequelize.transaction();
   try {
+    // Source File: Choose the existing one or create new one
+    const source = v.allowCreate.source
+      ? await createSource(t, v.plantId, v.newSourceName)
+      : await DataSource.findOne({ where: { id: v.sourceId, plant_id: v.plantId }, transaction: t });
+    if (!source) throw new HttpError(400, 'File sumber tidak ditemukan untuk pabrik ini.');
+
     // Edit: make sure the old point actually belongs to this plant
     if (oldKey) {
       const [own] = await sequelize.query(
@@ -185,7 +221,6 @@ async function savePoint(body, oldKey) {
       }
     }
 
-    // Nama baru: pakai parameter yang sudah ada, atau buat baru
     // New name: use the existing parameter or create new one
     const [param] = await Parameter.findOrCreate({ where: { nama: v.parameter }, transaction: t });
 
@@ -404,19 +439,71 @@ exports.updateParameter = async (req, res) => {
 };
 
 // DELETE /api/parameters/:unitId/:parameterId
+// Delete parameter and clean the parent (Source file, unit, sub category, dan parameter) if not used in other place or root
 exports.deleteParameter = async (req, res) => {
   let t;
   try {
     const { unitId, parameterId } = pointKey(req);
     t = await sequelize.transaction();
     if (!(await pointExists(t, unitId, parameterId))) throw new HttpError(404, 'Parameter tidak ditemukan.');
-    await sequelize.query('DELETE FROM source_columns WHERE unit_id = :unitId AND parameter_id = :parameterId',
-      { replacements: { unitId, parameterId }, transaction: t });
-    await sequelize.query('DELETE FROM kop_parameters WHERE unit_id = :unitId AND parameter_id = :parameterId AND is_active = 1',
-      { replacements: { unitId, parameterId }, transaction: t });
-    await recomputeStatus(t, unitId, parameterId);
+
+    const rows = (sql, replacements) =>
+      sequelize.query(sql, { replacements, type: QueryTypes.SELECT, transaction: t });
+    const exec = (sql, replacements) =>
+      sequelize.query(sql, { replacements, transaction: t });
+    const count = async (sql, replacements) => Number((await rows(sql, replacements))[0].n);
+
+    const sourceIds = (await rows(
+      'SELECT DISTINCT data_source_id AS id FROM source_columns WHERE unit_id = :unitId AND parameter_id = :parameterId',
+      { unitId, parameterId },
+    )).map((r) => r.id);
+    const [unitRow] = await rows('SELECT sub_category_id FROM units WHERE id = :unitId', { unitId });
+    const subId = unitRow?.sub_category_id;
+
+    // Hapus titik ukur beserta data hariannya
+    // Delete parameter and all daily data
+    await exec('DELETE FROM daily_readings WHERE unit_id = :unitId AND parameter_id = :parameterId', { unitId, parameterId });
+    await exec('DELETE FROM source_columns WHERE unit_id = :unitId AND parameter_id = :parameterId', { unitId, parameterId });
+    await exec('DELETE FROM kop_parameters WHERE unit_id = :unitId AND parameter_id = :parameterId', { unitId, parameterId });
+
+    const cleaned = { source: 0, unit: 0, sub: 0, parameter: 0 };
+
+    // 1. Delete Source file name if there is no other column
+    for (const sid of sourceIds) {
+      if ((await count('SELECT COUNT(*) AS n FROM source_columns WHERE data_source_id = :sid', { sid })) === 0) {
+        await exec('DELETE FROM data_sources WHERE id = :sid', { sid });
+        cleaned.source++;
+      }
+    }
+
+    // 2. Unit: Delete if there is no other parameter that have daily data
+    const unitUsed =
+      (await count('SELECT COUNT(*) AS n FROM source_columns WHERE unit_id = :unitId', { unitId })) +
+      (await count('SELECT COUNT(*) AS n FROM kop_parameters WHERE unit_id = :unitId', { unitId })) +
+      (await count('SELECT COUNT(*) AS n FROM daily_readings WHERE unit_id = :unitId', { unitId }));
+    if (unitUsed === 0) {
+      await exec('DELETE FROM units WHERE id = :unitId', { unitId });
+      cleaned.unit++;
+
+      // 3. Sub category: Delete if didnt have any unit
+      if (subId && (await count('SELECT COUNT(*) AS n FROM units WHERE sub_category_id = :subId', { subId })) === 0) {
+        await exec('DELETE FROM sub_categories WHERE id = :subId', { subId });
+        cleaned.sub++;
+      }
+    }
+
+    // 4. Parameter name: Delete if not used anywhere
+    const paramUsed =
+      (await count('SELECT COUNT(*) AS n FROM source_columns WHERE parameter_id = :parameterId', { parameterId })) +
+      (await count('SELECT COUNT(*) AS n FROM kop_parameters WHERE parameter_id = :parameterId', { parameterId })) +
+      (await count('SELECT COUNT(*) AS n FROM daily_readings WHERE parameter_id = :parameterId', { parameterId }));
+    if (paramUsed === 0) {
+      await exec('DELETE FROM parameters WHERE id = :parameterId', { parameterId });
+      cleaned.parameter++;
+    }
+
     await t.commit();
-    return res.status(200).json({ message: 'Parameter dihapus.' });
+    return res.status(200).json({ message: 'Parameter dihapus.', cleaned });
   } catch (err) {
     if (t) await t.rollback();
     return handleError(res, err);

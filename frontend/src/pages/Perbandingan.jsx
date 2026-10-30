@@ -12,7 +12,6 @@ const BASE_COLORS = ['#003399', '#F75807', '#027959', '#7C3AED', '#DB2777', '#08
 const colorAt = (i) =>
   i < BASE_COLORS.length ? BASE_COLORS[i] : `hsl(${Math.round((i * 137.508) % 360)} 65% 45%)`;
 
-// Awal riwayat default (ringan). Kalau user memilih start date lebih awal, riwayat diperluas otomatis.
 // Start date default. If user chose start date earlier then default, history will change automaticly
 const DEFAULT_HISTORY_START = '2025-01-01';
 // Bottom limit if backend not send mindate
@@ -61,7 +60,7 @@ function buildParameters(plants) {
   return [...map.values()].sort((a, b) => a.nama.localeCompare(b.nama));
 }
 
-// Only plant > main category > sub category > unit that has this parameter
+// Only plant => main category => sub category => unit that has this parameter
 const filterTree = (plants, paramId) =>
   plants
     .map((p) => ({

@@ -26,7 +26,7 @@ export default function ParamCard({
   const satuan = param.satuan ? ` ${param.satuan}` : '';
   const val = (n) => (stats ? `${fmtNum(n)}${satuan}` : '-');
 
-    // Ringkasan Parameter type ini local state so page not re render every time user typing
+  // Ringkasan Parameter type ini local state so page not re render every time user typing
   // Result send to builder after stop typing, or when textarea lost focus, or when card closed
   const [text, setText] = useState(summary);
   const textRef = useRef(summary);
@@ -65,8 +65,8 @@ export default function ParamCard({
   const emptyMessage = !startDate || !endDate
     ? 'Pilih periode yang valid untuk menampilkan grafik'
     : loading
-    ? 'Memuat data...'
-    : error || 'Belum ada data pada periode ini';
+      ? 'Memuat data...'
+      : error || 'Belum ada data pada periode ini';
 
   return (
     <div className="p-4 sm:p-5">

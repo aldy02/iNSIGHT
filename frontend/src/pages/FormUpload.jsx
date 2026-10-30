@@ -59,8 +59,6 @@ export default function FormUpload() {
     return () => { cancelled = true; };
   }, [plantId]);
 
-  const selectedSource = sources.find((s) => String(s.id) === String(sourceId));
-
   const validateFile = (f) => {
     if (!f) return 'File tidak ditemukan';
     const ext = f.name.slice(f.name.lastIndexOf('.')).toLowerCase();
@@ -230,14 +228,7 @@ export default function FormUpload() {
               Pabrik ini belum punya sumber file terdaftar.
             </p>
           )}
-          {selectedSource && (
-            <p className="text-xs text-[#8292AA] mt-2">
-              Sheet: <b className="text-[#1B2559]">{selectedSource.sheet_name || 'pertama'}</b>
-              {' · '}Tanggal di kolom <b className="text-[#1B2559]">{selectedSource.date_column}</b>
-              {' · '}Data mulai baris <b className="text-[#1B2559]">{selectedSource.data_start_row}</b>
-            </p>
-          )}
-        </div>
+                  </div>
 
         {/* Dropzone */}
         <div>

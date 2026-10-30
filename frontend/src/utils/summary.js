@@ -12,7 +12,7 @@ export const fmtDmy = (str) => {
   return y && m && d ? `${d}/${m}/${y}` : '';
 };
 
-// dd/mm/yyyy -> YYYY-MM-DD
+// dd/mm/yyyy => YYYY-MM-DD
 export function parseDmy(text) {
   const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(text);
   if (!match) return null;

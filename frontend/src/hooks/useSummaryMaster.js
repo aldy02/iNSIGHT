@@ -5,7 +5,7 @@ import { errorMessage } from '../utils/summary';
 const NO_CATEGORIES = [];
 
 export default function useSummaryMaster(plantId) {
-    //   Plant list
+    // Plant list
     const [plants, setPlants] = useState([]);
     const [plantsLoading, setPlantsLoading] = useState(true);
     const [plantsError, setPlantsError] = useState('');
@@ -30,7 +30,7 @@ export default function useSummaryMaster(plantId) {
         };
     }, [plantsTick]);
 
-    //   Stucture master selected plant
+    // Stucture master selected plant
     const [structure, setStructure] = useState({ plantId: null, categories: NO_CATEGORIES });
     const [structureError, setStructureError] = useState('');
     const [structureTick, setStructureTick] = useState(0);

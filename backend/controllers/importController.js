@@ -98,16 +98,27 @@ async function checkFileName(fileName, plant, source) {
             : `Pabrik pada nama file "${fileName}" tidak cocok dengan ${plant.nama} (${plant.kode}). Upload dibatalkan.`;
     }
 
+    // All resources belonging to this plant that match the file name
+    const siblings = await DataSource.findAll({
+        where: { plant_id: plant.id },
+        attributes: ['id', 'nama'],
+    });
+    const matches = siblings.filter((s) => sourceMatchesFile(s.nama, info));
+
     if (!sourceMatchesFile(source.nama, info)) {
-        const siblings = await DataSource.findAll({
-            where: { plant_id: plant.id },
-            attributes: ['id', 'nama'],
-        });
-        const matches = siblings.filter((s) => sourceMatchesFile(s.nama, info));
         const hint = matches.length
             ? ` File ini sepertinya untuk "${matches.map((s) => s.nama).join('" / "')}".`
             : '';
         return `Nama file "${fileName}" tidak cocok dengan sumber "${source.nama}".${hint} Upload dibatalkan.`;
+    }
+
+    // Sumber terpilih cocok, tapi ada sumber lain yang namanya lebih panjang (lebih spesifik) dan juga cocok
+    // Ex: sumber "Utility" ikut cocok dengan file "... - Utility Boiler".
+    const moreSpecific = matches.filter(
+        (s) => s.id !== source.id && compact(s.nama).length > compact(source.nama).length
+    );
+    if (moreSpecific.length) {
+        return `File "${fileName}" lebih cocok untuk sumber "${moreSpecific.map((s) => s.nama).join('" / "')}", bukan "${source.nama}". Upload dibatalkan.`;
     }
 
     return null;
