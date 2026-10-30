@@ -39,8 +39,9 @@ function parseBody(body) {
     maxInc: body.maxInc === undefined ? true : !!body.maxInc,
     satuan: clean(body.satuan),
     effectiveDate: body.effectiveDate ? String(body.effectiveDate).slice(0, 10) : todayStr(),
-    // Permision to create new sub category / unit / source (sended from frontend when user chooste to "+ Buat baru")
+    // Permision to create new main category / sub category / unit / source (sended from frontend when user chooste to "+ Buat baru")
     allowCreate: {
+      main: !!body.allowCreate?.main,
       sub: !!body.allowCreate?.sub,
       unit: !!body.allowCreate?.unit,
       source: !!body.allowCreate?.source,
@@ -54,6 +55,7 @@ function parseBody(body) {
     if (!v[key]) throw new HttpError(400, `${label} wajib diisi (isi "-" kalau tidak dipakai).`);
     if (v[key].length > (key === 'unit' ? 150 : 100)) throw new HttpError(400, `${label} terlalu panjang.`);
   }
+  if (v.main === '-') throw new HttpError(400, 'Kategori utama tidak boleh "-".');
   if (v.allowCreate.source) {
     // New source: source name is enough
     if (!v.newSourceName) throw new HttpError(400, 'Nama sumber wajib diisi.');
@@ -140,6 +142,71 @@ async function countReadings(t, unitId, parameterId) {
   return Number(row.n);
 }
 
+// Get Sub category + main category from one unit
+async function getUnitContext(t, unitId) {
+  const [row] = await sequelize.query(
+    `SELECT u.sub_category_id AS subId, sc.main_category_id AS mainId
+       FROM units u
+       JOIN sub_categories sc ON sc.id = u.sub_category_id
+      WHERE u.id = :unitId`,
+    { replacements: { unitId }, type: QueryTypes.SELECT, transaction: t },
+  );
+  return { subId: row?.subId ?? null, mainId: row?.mainId ?? null };
+}
+
+// Remove empty parents: source file, unit, subcategory, main category, parameter name.
+async function cleanupOrphans(t, { unitId, parameterId, sourceIds = [], subId, mainId }) {
+  const count = async (sql, replacements) => {
+    const [r] = await sequelize.query(sql, { replacements, type: QueryTypes.SELECT, transaction: t });
+    return Number(r.n);
+  };
+  const exec = (sql, replacements) => sequelize.query(sql, { replacements, transaction: t });
+
+  const cleaned = { source: 0, unit: 0, sub: 0, main: 0, parameter: 0 };
+
+  // 1. Delete Source file name if there is no other column
+  for (const sid of sourceIds) {
+    if ((await count('SELECT COUNT(*) AS n FROM source_columns WHERE data_source_id = :sid', { sid })) === 0) {
+      await exec('DELETE FROM data_sources WHERE id = :sid', { sid });
+      cleaned.source++;
+    }
+  }
+
+  // 2. Unit: Delete if there is no other parameter that have daily data
+  const unitUsed =
+    (await count('SELECT COUNT(*) AS n FROM source_columns WHERE unit_id = :unitId', { unitId })) +
+    (await count('SELECT COUNT(*) AS n FROM kop_parameters WHERE unit_id = :unitId', { unitId })) +
+    (await count('SELECT COUNT(*) AS n FROM daily_readings WHERE unit_id = :unitId', { unitId }));
+  if (unitUsed === 0) {
+    await exec('DELETE FROM units WHERE id = :unitId', { unitId });
+    cleaned.unit++;
+
+    // 3. Sub category: Delete if didnt have any unit
+    if (subId && (await count('SELECT COUNT(*) AS n FROM units WHERE sub_category_id = :subId', { subId })) === 0) {
+      await exec('DELETE FROM sub_categories WHERE id = :subId', { subId });
+      cleaned.sub++;
+
+      // 4. Main category: Delete if didnt have any sub category
+      if (mainId && (await count('SELECT COUNT(*) AS n FROM sub_categories WHERE main_category_id = :mainId', { mainId })) === 0) {
+        await exec('DELETE FROM main_categories WHERE id = :mainId', { mainId });
+        cleaned.main++;
+      }
+    }
+  }
+
+  // 5. Parameter name: Delete if not used anywhere
+  const paramUsed =
+    (await count('SELECT COUNT(*) AS n FROM source_columns WHERE parameter_id = :parameterId', { parameterId })) +
+    (await count('SELECT COUNT(*) AS n FROM kop_parameters WHERE parameter_id = :parameterId', { parameterId })) +
+    (await count('SELECT COUNT(*) AS n FROM daily_readings WHERE parameter_id = :parameterId', { parameterId }));
+  if (paramUsed === 0) {
+    await exec('DELETE FROM parameters WHERE id = :parameterId', { parameterId });
+    cleaned.parameter++;
+  }
+
+  return cleaned;
+}
+
 // Areas table only use as a pabrik connector (not displayed for user)
 const LIST_SQL = `
   SELECT pts.unit_id, pts.parameter_id,
@@ -221,19 +288,49 @@ async function savePoint(body, oldKey) {
       }
     }
 
+    // Save old parent when path change, so we can clean it after
+    let oldCtx = null;
+    let oldSourceIds = [];
+    if (oldKey) {
+      oldCtx = await getUnitContext(t, oldKey.unitId);
+      oldSourceIds = (await sequelize.query(
+        'SELECT DISTINCT data_source_id AS id FROM source_columns WHERE unit_id = :unitId AND parameter_id = :parameterId',
+        { replacements: oldKey, type: QueryTypes.SELECT, transaction: t },
+      )).map((r) => r.id);
+    }
+
     // New name: use the existing parameter or create new one
     const [param] = await Parameter.findOrCreate({ where: { nama: v.parameter }, transaction: t });
 
-    // Main category mush be exist in this plant (Menentukan menu dashboard), not created from form
+    // Main category: use the existing one in this plant, or create new one under
+    // this plant's area if frontend give permision (+ Buat baru)
     const mains = await sequelize.query(
       `SELECT mc.id FROM main_categories mc
          JOIN areas ar ON ar.id = mc.area_id
         WHERE ar.plant_id = :plantId AND mc.nama = :main`,
       { replacements: { plantId: v.plantId, main: v.main }, type: QueryTypes.SELECT, transaction: t },
     );
-    if (mains.length === 0) throw new HttpError(422, `Kategori utama "${v.main}" belum ada. Pilih dari daftar.`);
     if (mains.length > 1) throw new HttpError(409, `Kategori utama "${v.main}" ganda di pabrik ini. Hubungi admin.`);
-    const mainId = mains[0].id;
+
+    let mainId;
+    if (mains.length === 1) {
+      mainId = mains[0].id;
+    } else {
+      if (!v.allowCreate.main) {
+        throw new HttpError(422, `Kategori utama "${v.main}" belum ada. Pilih dari daftar atau pakai "Buat baru".`);
+      }
+      const areas = await sequelize.query(
+        'SELECT id FROM areas WHERE plant_id = :plantId ORDER BY id',
+        { replacements: { plantId: v.plantId }, type: QueryTypes.SELECT, transaction: t },
+      );
+      if (areas.length === 0) throw new HttpError(422, 'Pabrik ini belum punya area.');
+      if (areas.length > 1) throw new HttpError(409, 'Pabrik ini punya lebih dari satu area, hubungi admin.');
+      const [newMainId] = await sequelize.query(
+        'INSERT INTO main_categories (area_id, nama) VALUES (:areaId, :nama)',
+        { replacements: { areaId: areas[0].id, nama: v.main }, type: QueryTypes.INSERT, transaction: t },
+      );
+      mainId = newMainId;
+    }
 
     // Sub category and unit: creat only if frontend give permision (+ Buat Baru)
     const resolve = async (Model, where, label, allow) => {
@@ -295,9 +392,9 @@ async function savePoint(body, oldKey) {
     // KOP
     const [existingKop] = oldKey
       ? await sequelize.query(
-          'SELECT id FROM kop_parameters WHERE unit_id = :unitId AND parameter_id = :parameterId AND is_active = 1',
-          { replacements: oldKey, type: QueryTypes.SELECT, transaction: t },
-        )
+        'SELECT id FROM kop_parameters WHERE unit_id = :unitId AND parameter_id = :parameterId AND is_active = 1',
+        { replacements: oldKey, type: QueryTypes.SELECT, transaction: t },
+      )
       : [];
     const kopValues = {
       unitId: newKey.unitId, parameterId: newKey.parameterId,
@@ -343,6 +440,11 @@ async function savePoint(body, oldKey) {
     // Status daily data updated
     await recomputeStatus(t, newKey.unitId, newKey.parameterId);
     if (oldKey && moved) await recomputeStatus(t, oldKey.unitId, oldKey.parameterId);
+
+    // Clean old parent that empty (unit, sub, main, source file, and parameter)
+    if (oldKey) {
+      await cleanupOrphans(t, { ...oldKey, sourceIds: oldSourceIds, ...oldCtx });
+    }
 
     await t.commit();
     return { plantId: v.plantId, ...newKey };
@@ -439,7 +541,7 @@ exports.updateParameter = async (req, res) => {
 };
 
 // DELETE /api/parameters/:unitId/:parameterId
-// Delete parameter and clean the parent (Source file, unit, sub category, dan parameter) if not used in other place or root
+// Delete parameter and clean the parent (source file, unit, sub category, main category, parameter name) if not used anywhere else
 exports.deleteParameter = async (req, res) => {
   let t;
   try {
@@ -447,60 +549,19 @@ exports.deleteParameter = async (req, res) => {
     t = await sequelize.transaction();
     if (!(await pointExists(t, unitId, parameterId))) throw new HttpError(404, 'Parameter tidak ditemukan.');
 
-    const rows = (sql, replacements) =>
-      sequelize.query(sql, { replacements, type: QueryTypes.SELECT, transaction: t });
-    const exec = (sql, replacements) =>
-      sequelize.query(sql, { replacements, transaction: t });
-    const count = async (sql, replacements) => Number((await rows(sql, replacements))[0].n);
-
-    const sourceIds = (await rows(
+    const sourceIds = (await sequelize.query(
       'SELECT DISTINCT data_source_id AS id FROM source_columns WHERE unit_id = :unitId AND parameter_id = :parameterId',
-      { unitId, parameterId },
+      { replacements: { unitId, parameterId }, type: QueryTypes.SELECT, transaction: t },
     )).map((r) => r.id);
-    const [unitRow] = await rows('SELECT sub_category_id FROM units WHERE id = :unitId', { unitId });
-    const subId = unitRow?.sub_category_id;
+    const ctx = await getUnitContext(t, unitId);
 
-    // Hapus titik ukur beserta data hariannya
     // Delete parameter and all daily data
-    await exec('DELETE FROM daily_readings WHERE unit_id = :unitId AND parameter_id = :parameterId', { unitId, parameterId });
-    await exec('DELETE FROM source_columns WHERE unit_id = :unitId AND parameter_id = :parameterId', { unitId, parameterId });
-    await exec('DELETE FROM kop_parameters WHERE unit_id = :unitId AND parameter_id = :parameterId', { unitId, parameterId });
+    const exec = (sql) => sequelize.query(sql, { replacements: { unitId, parameterId }, transaction: t });
+    await exec('DELETE FROM daily_readings WHERE unit_id = :unitId AND parameter_id = :parameterId');
+    await exec('DELETE FROM source_columns WHERE unit_id = :unitId AND parameter_id = :parameterId');
+    await exec('DELETE FROM kop_parameters WHERE unit_id = :unitId AND parameter_id = :parameterId');
 
-    const cleaned = { source: 0, unit: 0, sub: 0, parameter: 0 };
-
-    // 1. Delete Source file name if there is no other column
-    for (const sid of sourceIds) {
-      if ((await count('SELECT COUNT(*) AS n FROM source_columns WHERE data_source_id = :sid', { sid })) === 0) {
-        await exec('DELETE FROM data_sources WHERE id = :sid', { sid });
-        cleaned.source++;
-      }
-    }
-
-    // 2. Unit: Delete if there is no other parameter that have daily data
-    const unitUsed =
-      (await count('SELECT COUNT(*) AS n FROM source_columns WHERE unit_id = :unitId', { unitId })) +
-      (await count('SELECT COUNT(*) AS n FROM kop_parameters WHERE unit_id = :unitId', { unitId })) +
-      (await count('SELECT COUNT(*) AS n FROM daily_readings WHERE unit_id = :unitId', { unitId }));
-    if (unitUsed === 0) {
-      await exec('DELETE FROM units WHERE id = :unitId', { unitId });
-      cleaned.unit++;
-
-      // 3. Sub category: Delete if didnt have any unit
-      if (subId && (await count('SELECT COUNT(*) AS n FROM units WHERE sub_category_id = :subId', { subId })) === 0) {
-        await exec('DELETE FROM sub_categories WHERE id = :subId', { subId });
-        cleaned.sub++;
-      }
-    }
-
-    // 4. Parameter name: Delete if not used anywhere
-    const paramUsed =
-      (await count('SELECT COUNT(*) AS n FROM source_columns WHERE parameter_id = :parameterId', { parameterId })) +
-      (await count('SELECT COUNT(*) AS n FROM kop_parameters WHERE parameter_id = :parameterId', { parameterId })) +
-      (await count('SELECT COUNT(*) AS n FROM daily_readings WHERE parameter_id = :parameterId', { parameterId }));
-    if (paramUsed === 0) {
-      await exec('DELETE FROM parameters WHERE id = :parameterId', { parameterId });
-      cleaned.parameter++;
-    }
+    const cleaned = await cleanupOrphans(t, { unitId, parameterId, sourceIds, ...ctx });
 
     await t.commit();
     return res.status(200).json({ message: 'Parameter dihapus.', cleaned });

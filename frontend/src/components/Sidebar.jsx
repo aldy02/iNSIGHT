@@ -41,21 +41,29 @@ export default function Sidebar({ isOpen, onClose }) {
   useEffect(() => {
     let cancelled = false;
 
-    api
-      .get('/plants/menu-structure')
-      .then((res) => {
-        if (!cancelled) setPlants(res.data.data || []);
-      })
-      .catch((err) => {
-        console.error('Gagal memuat menu', err);
-        if (!cancelled) setMenuError(true);
-      })
-      .finally(() => {
-        if (!cancelled) setLoadingMenu(false);
-      });
+    const loadMenu = () =>
+      api
+        .get('/plants/menu-structure')
+        .then((res) => {
+          if (cancelled) return;
+          setPlants(res.data.data || []);
+          setMenuError(false);
+        })
+        .catch((err) => {
+          console.error('Gagal memuat menu', err);
+          if (!cancelled) setMenuError(true);
+        })
+        .finally(() => {
+          if (!cancelled) setLoadingMenu(false);
+        });
+
+    loadMenu();
+
+    window.addEventListener('menu:refresh', loadMenu);
 
     return () => {
       cancelled = true;
+      window.removeEventListener('menu:refresh', loadMenu);
     };
   }, []);
 

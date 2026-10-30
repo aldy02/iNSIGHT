@@ -10,7 +10,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 
 const EMPTY_FORM = {
   parameter: '',
-  main: '',
+  main: '', mainNew: '',
   sub: '', subNew: '',
   unit: '', unitNew: '',
   min: '', max: '', minInc: true, maxInc: true,
@@ -18,7 +18,6 @@ const EMPTY_FORM = {
   sourceId: '', sourceNew: '', column: '',
 };
 
-const labelOf = (name) => (name === '-' ? '- (tidak ada)' : name);
 const pick = (selected, typed) => (selected === NEW ? typed.trim() : selected);
 
 export const pathLabel = (r) =>
@@ -36,7 +35,7 @@ export function kopLabel(r) {
 
 const formFromRow = (r) => ({
   parameter: r.parameter,
-  main: r.main,
+  main: r.main, mainNew: '',
   sub: r.sub, subNew: '',
   unit: r.unit, unitNew: '',
   min: r.min ?? '', max: r.max ?? '', minInc: true, maxInc: true,
@@ -90,7 +89,7 @@ function ChoiceField({
         <option value="">Pilih</option>
         {allowNew && <option value={NEW}>+ Buat baru</option>}
         {options.map((o) => (
-          <option key={o} value={o}>{labelOf(o)}</option>
+          <option key={o} value={o}>{o}</option>
         ))}
       </SelectBox>
       {allowNew && value === NEW && (
@@ -159,7 +158,7 @@ function ParameterFormModalContent({
 
   const names = {
     parameter: form.parameter.trim(),
-    main: form.main,
+    main: pick(form.main, form.mainNew),
     sub: pick(form.sub, form.subNew),
     unit: pick(form.unit, form.unitNew),
   };
@@ -186,7 +185,16 @@ function ParameterFormModalContent({
     if (!names.parameter) e.parameter = 'Nama parameter wajib diisi.';
     else if (names.parameter.length > 100) e.parameter = 'Nama parameter maksimal 100 karakter.';
 
-    if (!names.main) e.main = 'Pilih kategori utama.';
+    if (!names.main) {
+      e.main = form.main === NEW ? 'Nama kategori utama wajib diisi.' : 'Pilih kategori utama.';
+    } else if (names.main.length > 100) {
+      e.main = 'Nama kategori utama maksimal 100 karakter.';
+    } else if (names.main === '-') {
+      e.main = 'Kategori utama tidak boleh "-".';
+    } else if (form.main === NEW && tree.some((m) => compactName(m.nama) === compactName(names.main))) {
+      e.main = 'Kategori utama ini sudah ada, pilih dari daftar.';
+    }
+
     ['sub', 'unit'].forEach((k) => {
       if (!names[k]) e[k] = 'Wajib diisi. Isi "-" kalau level ini tidak dipakai.';
     });
@@ -241,8 +249,13 @@ function ParameterFormModalContent({
       main: names.main,
       sub: names.sub,
       unit: names.unit,
-      // Backend only create new sub category / unit / source if user allowed here
-      allowCreate: { sub: form.sub === NEW, unit: form.unit === NEW, source: newSource },
+      // Backend only create new main category / sub category / unit / source if user allowed here
+      allowCreate: {
+        main: form.main === NEW,
+        sub: form.sub === NEW,
+        unit: form.unit === NEW,
+        source: newSource,
+      },
       sourceId: newSource ? null : Number(form.sourceId),
       newSource: newSource ? { nama: sourceName } : null,
       column,
@@ -258,6 +271,7 @@ function ParameterFormModalContent({
       setLoading(true);
       if (isEdit) await updateParameter(initialData.unitId, initialData.parameterId, payload);
       else await createParameter(payload);
+      window.dispatchEvent(new Event('menu:refresh'));
       setSavedName(payload.parameter);
       onSuccess();
       setSuccessView(true);
@@ -272,6 +286,7 @@ function ParameterFormModalContent({
     try {
       setLoading(true);
       await deleteParameter(initialData.unitId, initialData.parameterId);
+      window.dispatchEvent(new Event('menu:refresh'));
       onSuccess();
       onClose();
     } catch (err) {
@@ -343,6 +358,7 @@ function ParameterFormModalContent({
           </p>
           <div className="bg-red-50 border border-red-100 text-red-600 text-sm rounded-xl px-4 py-3 mb-6 leading-relaxed">
             <b>Peringatan:</b> semua data yang terkait akan hilang permanen dan tidak bisa dikembalikan.
+            Kategori utama, sub kategori, unit, atau file sumber yang menjadi kosong ikut dihapus.
           </div>
 
           {error && (
@@ -413,16 +429,20 @@ function ParameterFormModalContent({
                 onChange={(v) =>
                   set({
                     main: v,
-                    sub: '',
+                    mainNew: '',
+                    // kategori utama baru pasti belum punya sub kategori dan unit
+                    sub: v === NEW ? NEW : '',
                     subNew: '',
-                    unit: '',
+                    unit: v === NEW ? NEW : '',
                     unitNew: '',
                   })
                 }
+                newValue={form.mainNew}
+                onNewChange={(v) => set({ mainNew: v })}
                 options={tree.map((m) => m.nama)}
-                allowNew={false}
                 error={errors.main}
                 hint="Menentukan menu tempat parameter tampil."
+                placeholder="Nama kategori utama baru"
               />
             </div>
 
@@ -433,7 +453,8 @@ function ParameterFormModalContent({
                 set({
                   sub: v,
                   subNew: '',
-                  unit: '',
+                  // sub kategori baru pasti belum punya unit
+                  unit: v === NEW ? NEW : '',
                   unitNew: '',
                 })
               }
